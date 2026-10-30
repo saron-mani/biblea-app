@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malayalam Bible Verse Selector</title>
+    
+    <!-- Embedded Book/Bible Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>">
+    
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --primary: #1e293b;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --border: #e2e8f0;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --success: #10b981;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--primary);
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 700px;
+        }
+        h2 {
+            margin-top: 0;
+            text-align: center;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border);
+            font-size: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+        select, input[type="text"], input[type="number"] {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #fff;
+        }
+        select:disabled, input:disabled {
+            background-color: #f1f5f9;
+            cursor: not-allowed;
+        }
+        
+        /* Responsive Grid (MD and SM compatible) */
+        .grid-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 15px;
+        }
+        @media (max-width: 600px) {
+            .grid-row {
+                grid-template-columns: 1fr; /* Stacks on small screens */
+            }
+        }
+
+        .preview-box {
+            background: #f1f5f9;
+            border-left: 4px solid var(--accent);
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 1.1rem;
+            min-height: 50px;
+            border-radius: 0 6px 6px 0;
+            line-height: 1.6;
+            color: var(--primary);
+        }
+        .error-text {
+            color: var(--danger);
+            font-style: italic;
+        }
+        
+        /* Buttons */
+        button {
+            border: none;
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            color: white;
+        }
+        button:disabled {
+            background-color: #94a3b8 !important;
+            cursor: not-allowed;
+        }
+        .btn-add { background-color: var(--accent); }
+        .btn-add:hover:not(:disabled) { background-color: var(--accent-hover); }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        @media (max-width: 600px) {
+            .action-buttons {
+                flex-direction: column; /* Stacks buttons on mobile */
+            }
+        }
+        .btn-download { background-color: var(--success); }
+        .btn-download:hover:not(:disabled) { background-color: #059669; }
+        
+        .btn-clear { background-color: var(--danger); }
+        .btn-clear:hover { background-color: var(--danger-hover); }
+        .btn-clear.confirming {
+            background-color: #7f1d1d; /* Darker red when confirming */
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            border-top: 2px solid var(--border);
+            padding-top: 20px;
+            margin-bottom: 10px;
+        }
+        .output-header label { margin: 0; }
+        .counter-badge {
+            background: var(--accent);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        textarea {
+            width: 100%;
+            height: 250px;
+            padding: 15px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+            resize: vertical;
+            box-sizing: border-box;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Bible Verse Selector</h2>
+
+    <div class="form-group">
+        <label for="category">Category</label>
+        <select id="category" disabled>
+            <option value="Wisdom and Instruction">Wisdom and Instruction</option>
+            <option value="Praise and Thanksgiving">Praise and Thanksgiving</option>
+            <option value="Faith and Trust">Faith and Trust</option>
+            <option value="Love and Compassion">Love and Compassion</option>
+            <option value="Creation and Majesty">Creation and Majesty</option>
+            <option value="Hope">Hope</option>
+            <option value="Forgiveness">Forgiveness</option>
+            <option value="custom">-- Make Custom Category --</option>
+        </select>
+        <input type="text" id="customCategory" class="hidden" placeholder="Type your custom category..." style="margin-top: 10px;">
+    </div>
+
+    <div class="grid-row">
+        <div class="form-group">
+            <label for="book">Book</label>
+            <select id="book" disabled><option>Loading JSON...</option></select>
+        </div>
+        <div class="form-group">
+            <label for="chapter">Chapter</label>
+            <input type="number" id="chapter" min="1" value="1" disabled>
+        </div>
+        <div class="form-group">
+            <label for="verse">Verse</label>
+            <input type="number" id="verse" min="1" value="1" disabled>
+        </div>
+    </div>
+
+    <div class="preview-box" id="previewText">
+        Loading quoteBank.json... Please wait.
+    </div>
+
+    <button id="addBtn" class="btn-add" disabled>Add to List</button>
+
+    <div class="output-header">
+        <label for="outputArea">Formatted Address Output (JSON)</label>
+        <span class="counter-badge">Total Quotes: <span id="quoteCounter">0</span></span>
+    </div>
+    <textarea id="outputArea" readonly placeholder="Your compiled categories and verses will appear here..."></textarea>
+    
+    <div class="action-buttons">
+        <button id="downloadBtn" class="btn-download" disabled>Download JSON</button>
+        <button id="clearBtn" class="btn-clear" disabled>Clear Quotes</button>
+    </div>
+</div>
+
+<script>
+    // Standard Malayalam Bible mapping (Indexes 0 to 65)
+    const malayalamBooks = [
+        "ഉല്പത്തി", "പുറപ്പാടു", "ലേവ്യപുസ്തകം", "സംഖ്യാപുസ്തകം", "ആവർത്തനപുസ്തകം", "യോശുവ", "ന്യായാധിപന്മാർ", "രൂത്ത്", "1 ശമുവേൽ", "2 ശമുവേൽ", 
+        "1 രാജാക്കന്മാർ", "2 രാജാക്കന്മാർ", "1 ദിനവൃത്താന്തം", "2 ദിനവൃത്താന്തം", "എസ്രാ", "നെഹെമ്യാവു", "എസ്ഥേർ", "ഇയ്യോബ്", "സങ്കീർത്തനങ്ങൾ", "സദൃശ്യവാക്യങ്ങൾ", 
+        "സഭാപ്രസംഗി", "ഉത്തമഗീതം", "യെശയ്യാ", "യിരെമ്യാവു", "വിലാപങ്ങൾ", "യെഹെസ്കേൽ", "ദാനീയേൽ", "ഹോശേയ", "യോവേൽ", "ആമോസ്", 
+        "ഓബദ്യാവു", "യോനാ", "മീഖാ", "നഹൂം", "ഹബക്കൂക്", "സെഫന്യാവു", "ഹഗ്ഗായി", "സെഖര്യാവു", "മലാഖി", "മത്തായി", 
+        "മർക്കൊസ്", "ലൂക്കൊസ്", "യോഹന്നാൻ", "അപ്പൊ. പ്രവൃത്തികൾ", "റോമർ", "1 കൊരിന്ത്യർ", "2 കൊരിന്ത്യർ", "ഗലാത്യർ", "എഫെസ്യർ", "ഫിലിപ്പിയർ", 
+        "കൊലൊസ്സ്യർ", "1 തെസ്സലൊനീക്യർ", "2 തെസ്സലൊനീക്യർ", "1 തിമൊഥെയൊസ്", "2 തിമൊഥെയൊസ്", "തീത്തൊസ്", "ഫിലേമോൻ", "എബ്രായർ", "യാക്കോബ്", "1 പത്രൊസ്", 
+        "2 പത്രൊസ്", "1 യോഹന്നാൻ", "2 യോഹന്നാൻ", "3 യോഹന്നാൻ", "യൂദാ", "വെളിപ്പാടു"
+    ];
+
+    let quoteBank = {};
+    let compiledData = {};
+    let totalQuotes = 0;
+    let clearConfirmTimer = null;
+
+    // DOM Elements
+    const categorySelect = document.getElementById('category');
+    const customCategoryInput = document.getElementById('customCategory');
+    const bookSelect = document.getElementById('book');
+    const chapterInput = document.getElementById('chapter');
+    const verseInput = document.getElementById('verse');
+    const previewText = document.getElementById('previewText');
+    const addBtn = document.getElementById('addBtn');
+    const outputArea = document.getElementById('outputArea');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const quoteCounter = document.getElementById('quoteCounter');
+
+    // 1. Fetch JSON on load (Works perfectly on Cloudflare Pages)
+    window.onload = function() {
+        fetch('quoteBank.json')
+            .then(response => {
+                if (!response.ok) throw new Error("HTTP error " + response.status);
+                return response.json();
+            })
+            .then(data => {
+                quoteBank = data;
+                enableInputs();
+                initializeBooks();
+                updatePreview();
+            })
+            .catch(error => {
+                console.error("Fetch error:", error);
+                previewText.innerHTML = '<span class="error-text">Error loading quoteBank.json. Ensure the file is deployed correctly.</span>';
+            });
+    };
+
+    function enableInputs() {
+        categorySelect.disabled = false;
+        bookSelect.disabled = false;
+        chapterInput.disabled = false;
+        verseInput.disabled = false;
+    }
+
+    // Custom Category Toggle
+    categorySelect.addEventListener('change', function() {
+        if (this.value === 'custom') {
+            customCategoryInput.classList.remove('hidden');
+        } else {
+            customCategoryInput.classList.add('hidden');
+        }
+    });
+
+    // Populate Books
+    function initializeBooks() {
+        bookSelect.innerHTML = '';
+        Object.keys(quoteBank).forEach(bookId => {
+            const option = document.createElement('option');
+            option.value = bookId;
+            option.textContent = malayalamBooks[bookId] ? `${bookId} - ${malayalamBooks[bookId]}` : `Book ${bookId}`;
+            bookSelect.appendChild(option);
+        });
+    }
+
+    // Trigger preview update on changes
+    bookSelect.addEventListener('change', updatePreview);
+    chapterInput.addEventListener('input', updatePreview);
+    verseInput.addEventListener('input', updatePreview);
+
+    // Validate and preview text based on number inputs
+    function updatePreview() {
+        const bookId = bookSelect.value;
+        const chapterId = chapterInput.value;
+        const verseId = verseInput.value;
+        
+        previewText.classList.remove('error-text');
+
+        if(quoteBank[bookId] && quoteBank[bookId][chapterId] && quoteBank[bookId][chapterId][verseId]) {
+            previewText.textContent = quoteBank[bookId][chapterId][verseId];
+            addBtn.disabled = false;
+        } else {
+            previewText.textContent = "Verse not found. Please check chapter and verse numbers.";
+            previewText.classList.add('error-text');
+            addBtn.disabled = true;
+        }
+    }
+
+    // Add Verse to Data
+    addBtn.addEventListener('click', function() {
+        let category = categorySelect.value === 'custom' ? customCategoryInput.value.trim() : categorySelect.value;
+        if (!category) category = "Uncategorized";
+
+        const bookId = String(bookSelect.value);
+        const chapterId = String(chapterInput.value);
+        const verseId = String(verseInput.value);
+
+        if (!compiledData[category]) compiledData[category] = [];
+
+        // Check for duplicates before adding
+        const isDuplicate = compiledData[category].some(item => 
+            item.book === bookId && item.chapter === chapterId && item.verse === verseId
+        );
+
+        if(!isDuplicate) {
+            compiledData[category].push({ book: bookId, chapter: chapterId, verse: verseId });
+            totalQuotes++;
+            updateUI();
+        } else {
+            alert("This verse is already added to this category!");
+        }
+    });
+
+    // Update Textarea and Counters
+    function updateUI() {
+        outputArea.value = Object.keys(compiledData).length ? JSON.stringify(compiledData, null, 2) : '';
+        outputArea.scrollTop = outputArea.scrollHeight;
+        quoteCounter.textContent = totalQuotes;
+        
+        const hasData = totalQuotes > 0;
+        downloadBtn.disabled = !hasData;
+        clearBtn.disabled = !hasData;
+    }
+
+    // Download JSON Button
+    downloadBtn.addEventListener('click', function() {
+        if (totalQuotes === 0) return;
+        
+        const dataStr = JSON.stringify(compiledData, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "compiled_verses.json";
+        document.body.appendChild(a);
+        a.click();
+        
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    // Clear Button (Double Confirmation Logic)
+    clearBtn.addEventListener('click', function() {
+        if (this.dataset.state === 'confirm') {
+            // Second click: Perform the clear
+            compiledData = {};
+            totalQuotes = 0;
+            updateUI();
+            resetClearButton();
+        } else {
+            // First click: Ask for confirmation
+            this.dataset.state = 'confirm';
+            this.textContent = 'Are you sure?';
+            this.classList.add('confirming');
+            
+            // Reset button if not clicked again within 3 seconds
+            clearConfirmTimer = setTimeout(resetClearButton, 3000);
+        }
+    });
+
+    function resetClearButton() {
+        clearBtn.dataset.state = 'normal';
+        clearBtn.textContent = 'Clear Quotes';
+        clearBtn.classList.remove('confirming');
+        clearTimeout(clearConfirmTimer);
+    }
+</script>
+
+</body>
+</html>

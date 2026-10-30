@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 180" role="img" aria-labelledby="biblaeIconTitle">
+  <title id="biblaeIconTitle">biblea monogram</title>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;700&amp;display=swap');
+
+    .wordmark {
+      font-family: 'Inter', 'Avenir Next', 'Futura', 'Century Gothic', 'Segoe UI', Arial, sans-serif;
+      font-weight: 600;
+      font-size: 108px;
+      letter-spacing: -3px;
+    }
+
+    .quotemark {
+      font-family: 'Inter', 'Avenir Next', 'Futura', 'Century Gothic', 'Segoe UI', Arial, sans-serif;
+      font-weight: 700;
+      font-size: 50px;
+    }
+
+    /* Colors set to match the cream/gold from your uploaded image */
+    .ink    { fill: var(--biblea-ink, #F4F1E9); }
+    .accent { fill: var(--biblea-accent, #DCA840); }
+  </style>
+
+  <!-- The letter 'b' -->
+  <text x="60" y="140" text-anchor="middle" class="wordmark ink">b</text>
+  
+  <!-- The apostrophe positioned at the top-left of the 'b' stem -->
+  <!-- If font rendering differs slightly on your OS, adjust x="28" and y="85" by 1-2 pixels -->
+  <text x="28" y="85" text-anchor="middle" class="quotemark accent">&#8217;</text>
+</svg>
