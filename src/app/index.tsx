@@ -231,7 +231,7 @@ export default function Index() {
     for (let i = 0; i < count; i++) {
       const quote = getRandomQuote();
       const url1 = `https://picsum.photos/720/1280.webp?random=${Math.random()}`;
-      const url2 = `https://picsum.photos/720/1280.webp?random=${Math.random()}`;
+      const url2 = `https://picsum.photos/540/960.webp?random=${Math.random()}`;
 
       newItems.push({
         ...quote,

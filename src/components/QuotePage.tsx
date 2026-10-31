@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
+import MaskedView from "@react-native-masked-view/masked-view";
 import { BlurTargetView, BlurView } from "expo-blur";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as Sharing from "expo-sharing";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -11,7 +12,117 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
+
+/* ------------------------------------------------------------------ */
+/* Random soft "heatmap hump" blur helpers                             */
+/* ------------------------------------------------------------------ */
+
+type Blob = {
+  id: string;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  peak: number;
+};
+
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+// Called once per quote, so every instance gets a different pattern
+const makeBlobs = (): Blob[] => {
+  const count = 3 + Math.floor(Math.random() * 3); // 3–5 humps
+  return Array.from({ length: count }, (_, i) => ({
+    id: `b${i}_${Math.random().toString(36).slice(2, 7)}`,
+    cx: rand(0, 100),
+    cy: rand(0, 100),
+    rx: rand(25, 60),
+    ry: rand(20, 55),
+    peak: rand(0.55, 1),
+  }));
+};
+
+function BlurHeatmapMask({ blobs }: { blobs: Blob[] }) {
+  return (
+    <Svg
+      style={StyleSheet.absoluteFill}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+    >
+      <Defs>
+        {blobs.map((b) => (
+          <RadialGradient key={b.id} id={b.id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#000" stopOpacity={b.peak} />
+            <Stop offset="0.5" stopColor="#000" stopOpacity={b.peak * 0.45} />
+            <Stop offset="1" stopColor="#000" stopOpacity={0} />
+          </RadialGradient>
+        ))}
+      </Defs>
+      {blobs.map((b) => (
+        <Ellipse
+          key={b.id}
+          cx={b.cx}
+          cy={b.cy}
+          rx={b.rx}
+          ry={b.ry}
+          fill={`url(#${b.id})`}
+        />
+      ))}
+    </Svg>
+  );
+}
+
+function Backdrop({
+  imgUrls,
+  blobs,
+  transition,
+}: {
+  imgUrls: string[];
+  blobs: Blob[];
+  transition?: number;
+}) {
+  return (
+    <>
+      {imgUrls[0] && (
+        <Image
+          source={{ uri: imgUrls[0] }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={transition}
+        />
+      )}
+      {imgUrls[1] && (
+        <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]}>
+          {/* sharp base */}
+          <Image
+            source={{ uri: imgUrls[1] }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={transition}
+          />
+          {/* blurred copy, revealed only inside the random humps */}
+          <MaskedView
+            style={StyleSheet.absoluteFill}
+            maskElement={<BlurHeatmapMask blobs={blobs} />}
+          >
+            <Image
+              source={{ uri: imgUrls[1] }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              blurRadius={40}
+              transition={transition}
+            />
+          </MaskedView>
+        </View>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 
 export default function QuotePage(props: {
   quote: string;
@@ -26,6 +137,9 @@ export default function QuotePage(props: {
   const shareViewRef = useRef<View | null>(null);
 
   const [isCapturing, setIsCapturing] = useState(false);
+
+  // Regenerates whenever this card gets new content (recycled list items included)
+  const blobs = useMemo(makeBlobs, [props.imgUrls[1], props.quote]);
 
   const handleShare = async () => {
     setIsCapturing(true);
@@ -88,21 +202,8 @@ export default function QuotePage(props: {
           pointerEvents="none"
         >
           <BlurTargetView ref={shareTargetRef} style={StyleSheet.absoluteFill}>
-            {props.imgUrls[0] && (
-              <Image
-                source={{ uri: props.imgUrls[0] }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                // No transition here so screenshot captures fully opaque instantly!
-              />
-            )}
-            {props.imgUrls[1] && (
-              <Image
-                source={{ uri: props.imgUrls[1] }}
-                style={[StyleSheet.absoluteFill, { opacity: 0.5 }]}
-                contentFit="cover"
-              />
-            )}
+            {/* No transition here so screenshot captures fully opaque instantly! */}
+            <Backdrop imgUrls={props.imgUrls} blobs={blobs} />
           </BlurTargetView>
 
           <View
@@ -166,22 +267,8 @@ export default function QuotePage(props: {
         pointerEvents="box-none"
       >
         <BlurTargetView ref={targetRef} style={StyleSheet.absoluteFill}>
-          {props.imgUrls[0] && (
-            <Image
-              source={{ uri: props.imgUrls[0] }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={800} // Visible UI keeps its smooth fade-in
-            />
-          )}
-          {props.imgUrls[1] && (
-            <Image
-              source={{ uri: props.imgUrls[1] }}
-              style={[StyleSheet.absoluteFill, { opacity: 0.5 }]}
-              contentFit="cover"
-              transition={800}
-            />
-          )}
+          {/* Visible UI keeps its smooth fade-in */}
+          <Backdrop imgUrls={props.imgUrls} blobs={blobs} transition={800} />
         </BlurTargetView>
 
         <View

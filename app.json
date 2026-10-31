@@ -25,7 +25,6 @@
     },
     "plugins": [
       "expo-router",
-
       [
         "expo-splash-screen",
         {
@@ -47,6 +46,12 @@
       "eas": {
         "projectId": "1e3a8d27-1f40-4a16-9701-57e9a9e76fda"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1e3a8d27-1f40-4a16-9701-57e9a9e76fda"
     }
   }
 }
