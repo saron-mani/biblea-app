@@ -24,6 +24,25 @@
       "display": "standalone"
     },
     "plugins": [
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "DailyQuote",
+              "label": "Verse of the Day",
+              "description": "Today's verse from biblea",
+              "minWidth": "180dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "previewImage": "./assets/widget-preview/daily-quote.png",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
