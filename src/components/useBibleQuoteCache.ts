@@ -54,7 +54,10 @@ export function useBibleQuoteCache() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Re-check the Google Sheet on every app launch, so edits made to today's
+    // row show up right away instead of waiting for tomorrow's cache rollover.
+    // If the fetch fails (offline), getCurrentDayData falls back to the cache.
+    load({ forceCheck: true });
   }, [load]);
 
   // Optional: call on app foreground / pull-to-refresh to re-check the

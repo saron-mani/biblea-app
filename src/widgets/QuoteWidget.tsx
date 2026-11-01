@@ -1,8 +1,7 @@
 // src/widgets/QuoteWidget.tsx
 //
 // Widget UI, modelled on src/components/QuotePage.tsx:
-//   - imageA full-bleed, imageB layered on top at 50% opacity (both cropped
-//     "cover"-style, never stretched)
+//   - a random pastel + layered-texture background (new one each day)
 //   - a frosted-looking card with the logo, the verse text and the reference
 //   - light and dark variants (the task handler renders both; Android shows
 //     the one matching the device theme)
@@ -13,42 +12,33 @@
 
 import {
   FlexWidget,
-  ImageWidget,
   OverlapWidget,
   SvgWidget,
   TextWidget,
 } from "react-native-android-widget";
-
-// ---- Switches ---------------------------------------------------------
-/**
- * true  -> the two photos are composed in an SVG, which gives true "cover"
- *          cropping and 50% opacity for imageB.
- * false -> fallback: plain ImageWidget with imageA only (it can't crop, and
- *          has no opacity). Use this if the SVG backdrop renders blank.
- */
-const USE_SVG_BACKDROP = true;
-// ------------------------------------------------------------------------
+import { buildBackgroundSvg } from "./backgrounds";
 
 const RADIUS = 14; // widget corner radius
 const CARD_RADIUS = 11; // card corner radius
 
 type Theme = "light" | "dark";
 
-// Logos: the original one (same as QuotePage) for dark mode,
-// the white version for light mode.
-const LOGO_SVG_DARK = require("../../assets/images/name-img-white.svg");
+// Light theme: the original logo. Dark theme: the white logo.
 const LOGO_SVG_LIGHT = require("../../assets/images/name-img.svg");
+const LOGO_SVG_DARK = require("../../assets/images/name-img-white.svg");
 
 const THEMES = {
   light: {
     cardBg: "rgba(255, 255, 255, 0.45)", // translucent white
     text: "#000000",
     logo: LOGO_SVG_LIGHT,
+    fallbackBg: "#E9E6F2",
   },
   dark: {
     cardBg: "rgba(22, 22, 22, 0.55)", // dark charcoal, translucent
     text: "#E3E3E3", // soft off-white instead of pure white
     logo: LOGO_SVG_DARK,
+    fallbackBg: "#1C1B1F",
   },
 } as const;
 
@@ -57,10 +47,8 @@ interface QuoteWidgetProps {
   quote?: string | null;
   /** e.g. "യോഹന്നാൻ 3:16" */
   address?: string | null;
-  /** Background photo: data:image/...;base64 URI. */
-  imageA?: string | null;
-  /** Second photo, drawn over imageA at 50% opacity. */
-  imageB?: string | null;
+  /** Today's date key (yyyy-mm-dd); decides the day's background. */
+  dateKey?: string;
   /** Widget size in dp (from widgetInfo). */
   width: number;
   height: number;
@@ -93,36 +81,10 @@ function computeLayout(w: number, h: number, textLength: number) {
   return { pad, cardW, logoH, logoW, addrFs, gap, fontSize, maxLines };
 }
 
-/**
- * imageA at full opacity, imageB at 50% on top, both centre-cropped
- * ("slice" = CSS object-fit: cover), clipped to rounded corners.
- */
-function buildBackdropSvg(
-  w: number,
-  h: number,
-  imageA?: string | null,
-  imageB?: string | null,
-) {
-  const img = (src: string, opacity: number) =>
-    `<image x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" opacity="${opacity}" xlink:href="${src}"/>`;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
-    `width="100%" height="100%" viewBox="0 0 ${w} ${h}">` +
-    `<defs><clipPath id="clip"><rect width="${w}" height="${h}" rx="${RADIUS}" ry="${RADIUS}"/></clipPath></defs>` +
-    `<g clip-path="url(#clip)">` +
-    `<rect width="${w}" height="${h}" fill="#1C1B1F"/>` +
-    (imageA ? img(imageA, 1) : "") +
-    (imageB ? img(imageB, 0.5) : "") +
-    `</g></svg>`
-  );
-}
-
 export function QuoteWidget({
   quote,
   address,
-  imageA,
-  imageB,
+  dateKey = "static",
   width,
   height,
   theme = "light",
@@ -141,14 +103,14 @@ export function QuoteWidget({
           width: "match_parent",
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "#1C1B1F",
+          backgroundColor: t.fallbackBg,
           borderRadius: RADIUS,
           padding: 16,
         }}
       >
         <TextWidget
           text="Open Biblea to load today's verse"
-          style={{ fontSize: 15, color: "#FFFFFF" }}
+          style={{ fontSize: 15, color: t.text }}
         />
       </FlexWidget>
     );
@@ -164,23 +126,14 @@ export function QuoteWidget({
         width: "match_parent",
         borderRadius: RADIUS,
         overflow: "hidden",
-        backgroundColor: "#1C1B1F",
+        backgroundColor: t.fallbackBg,
       }}
     >
-      {/* Backdrop: the two photos */}
-      {USE_SVG_BACKDROP ? (
-        <SvgWidget
-          svg={buildBackdropSvg(w, h, imageA, imageB)}
-          style={{ width: w, height: h }}
-        />
-      ) : imageA ? (
-        <ImageWidget
-          image={imageA as any}
-          imageWidth={w}
-          imageHeight={h}
-          radius={RADIUS}
-        />
-      ) : null}
+      {/* Background: today's random pastel + texture */}
+      <SvgWidget
+        svg={buildBackgroundSvg(w, h, dateKey, theme, RADIUS)}
+        style={{ width: w, height: h }}
+      />
 
       {/* Card, centred like QuotePage */}
       <FlexWidget

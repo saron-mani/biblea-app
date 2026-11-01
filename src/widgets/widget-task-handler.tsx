@@ -2,11 +2,13 @@
 //
 // Android calls this (in a headless JS context, app closed) whenever the
 // widget is added, resized, or its updatePeriodMillis timer fires.
-// It reuses getCurrentDayData(), so the widget shares the exact same
-// 5-day Google Sheets cache + daily rollover as the app, and looks the verse
-// text up in quoteBank.json the same way src/app/index.tsx does.
+// It reuses getCurrentDayData(), so the widget shares the same Google Sheets
+// cache + daily rollover as the app, and looks the verse text up in
+// quoteBank.json the same way src/app/index.tsx does.
+//
+// The background is generated from the date (see backgrounds.ts), so no
+// images are downloaded or converted for the widget any more.
 
-import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import {
   requestWidgetUpdate,
@@ -22,73 +24,8 @@ import { QuoteWidget } from "./QuoteWidget";
 /** Must match widgets[].name in the app.json plugin config. */
 export const WIDGET_NAME = "DailyQuote";
 
-/** Images bigger than this are skipped (they'd bloat the widget bitmap). */
-const MAX_INLINE_BYTES = 4 * 1024 * 1024;
-
-const MIME_BY_EXT: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-};
-
-const TMP_DIR = `${FileSystem.cacheDirectory}biblea-widget/`;
-
-function extOf(uri: string) {
-  return uri.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
-}
-
-/**
- * The widget can only use https URLs or data:image URIs (not file://), and
- * the SVG backdrop can only use data URIs. So: use the already-cached local
- * file if there is one, otherwise download the remote URL once, then return
- * the file as a base64 data URI.
- */
-async function toDataUri(
-  cachedUri?: string | null,
-  remoteUrl?: string | null,
-): Promise<string | null> {
-  try {
-    let localUri: string | null =
-      cachedUri && !/^https?:/i.test(cachedUri) ? cachedUri : null;
-
-    if (!localUri) {
-      const remote =
-        remoteUrl ??
-        (cachedUri && /^https?:/i.test(cachedUri) ? cachedUri : null);
-      if (!remote) return null;
-      const dir = await FileSystem.getInfoAsync(TMP_DIR);
-      if (!dir.exists) {
-        await FileSystem.makeDirectoryAsync(TMP_DIR, { intermediates: true });
-      }
-      const target = `${TMP_DIR}${Math.abs(hash(remote))}.${extOf(remote)}`;
-      const res = await FileSystem.downloadAsync(remote, target);
-      localUri = res.uri;
-    }
-
-    const info = await FileSystem.getInfoAsync(localUri);
-    if (!info.exists || info.size > MAX_INLINE_BYTES) return null;
-
-    const mime = MIME_BY_EXT[extOf(localUri)] ?? "image/jpeg";
-    const b64 = await FileSystem.readAsStringAsync(localUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return `data:${mime};base64,${b64}`;
-  } catch (err) {
-    console.log("[biblea] widget: image load failed", err);
-    return null;
-  }
-}
-
-function hash(s: string) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
-  return h >>> 0;
-}
-
 async function loadWidgetData() {
-  const { currentDayData, window } = await getCurrentDayData();
+  const { currentDayData } = await getCurrentDayData();
   if (!currentDayData) return null; // sheet has no row for today
 
   const { book, chapter, verse } = currentDayData;
@@ -103,13 +40,7 @@ async function loadWidgetData() {
   const bookName = malayalamBooks[book] || book;
   const address = `${bookName} ${parseInt(chapter, 10)}:${parseInt(verse, 10)}`;
 
-  const row = window?.[todayKey()];
-  const [imageA, imageB] = await Promise.all([
-    toDataUri(currentDayData.imageA, row?.imageA),
-    toDataUri(currentDayData.imageB, row?.imageB),
-  ]);
-
-  return { quote, address, imageA, imageB };
+  return { quote, address };
 }
 
 async function buildWidget(width = 300, height = 300) {
@@ -122,8 +53,7 @@ async function buildWidget(width = 300, height = 300) {
   const shared = {
     quote: data?.quote,
     address: data?.address,
-    imageA: data?.imageA,
-    imageB: data?.imageB,
+    dateKey: todayKey(),
     width,
     height,
   };
