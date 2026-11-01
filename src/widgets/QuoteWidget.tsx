@@ -4,6 +4,8 @@
 //   - imageA full-bleed, imageB layered on top at 50% opacity (both cropped
 //     "cover"-style, never stretched)
 //   - a frosted-looking card with the logo, the verse text and the reference
+//   - light and dark variants (the task handler renders both; Android shows
+//     the one matching the device theme)
 //
 // Rules from react-native-android-widget: no hooks, not async, and only the
 // library's primitives (no View / Text / Image from react-native).
@@ -27,13 +29,28 @@ import {
 const USE_SVG_BACKDROP = true;
 // ------------------------------------------------------------------------
 
-const RADIUS = 18; // widget corner radius
-const CARD_RADIUS = 12; // same as QuotePage's card
-const CARD_BG = "rgba(255, 255, 255, 0.45)"; // stand-in for the blur (widgets can't blur)
-const TEXT_COLOR = "#000000";
+const RADIUS = 14; // widget corner radius
+const CARD_RADIUS = 11; // card corner radius
 
-// Same logo QuotePage uses.
-const LOGO_SVG = require("../../assets/images/name-img.svg");
+type Theme = "light" | "dark";
+
+// Logos: the original one (same as QuotePage) for dark mode,
+// the white version for light mode.
+const LOGO_SVG_DARK = require("../../assets/images/name-img-white.svg");
+const LOGO_SVG_LIGHT = require("../../assets/images/name-img.svg");
+
+const THEMES = {
+  light: {
+    cardBg: "rgba(255, 255, 255, 0.45)", // translucent white
+    text: "#000000",
+    logo: LOGO_SVG_LIGHT,
+  },
+  dark: {
+    cardBg: "rgba(22, 22, 22, 0.55)", // dark charcoal, translucent
+    text: "#E3E3E3", // soft off-white instead of pure white
+    logo: LOGO_SVG_DARK,
+  },
+} as const;
 
 interface QuoteWidgetProps {
   /** Verse text from quoteBank.json. */
@@ -47,6 +64,7 @@ interface QuoteWidgetProps {
   /** Widget size in dp (from widgetInfo). */
   width: number;
   height: number;
+  theme?: Theme;
 }
 
 const clamp = (n: number, min: number, max: number) =>
@@ -107,9 +125,11 @@ export function QuoteWidget({
   imageB,
   width,
   height,
+  theme = "light",
 }: QuoteWidgetProps) {
   const w = Math.max(1, Math.round(width));
   const h = Math.max(1, Math.round(height));
+  const t = THEMES[theme];
 
   // No verse yet (offline on first install, or no row for today in the sheet).
   if (!quote || !address) {
@@ -176,24 +196,17 @@ export function QuoteWidget({
             width: L.cardW,
             padding: L.pad,
             borderRadius: CARD_RADIUS,
-            backgroundColor: CARD_BG,
+            backgroundColor: t.cardBg,
           }}
         >
-          <SvgWidget
-            svg={LOGO_SVG}
-            style={{ width: L.logoW, height: L.logoH }}
-          />
+          <SvgWidget svg={t.logo} style={{ width: L.logoW, height: L.logoH }} />
 
           <TextWidget
             text={quote}
             maxLines={L.maxLines}
             truncate="END"
             allowFontScaling={false}
-            style={{
-              fontSize: L.fontSize,
-              color: TEXT_COLOR,
-              marginTop: L.gap,
-            }}
+            style={{ fontSize: L.fontSize, color: t.text, marginTop: L.gap }}
           />
 
           <FlexWidget
@@ -207,7 +220,7 @@ export function QuoteWidget({
             <TextWidget
               text={address}
               allowFontScaling={false}
-              style={{ fontSize: L.addrFs, color: TEXT_COLOR }}
+              style={{ fontSize: L.addrFs, color: t.text }}
             />
           </FlexWidget>
         </FlexWidget>

@@ -6,6 +6,7 @@
 // that a plain .js file with an untyped useState(null) would cause.
 
 import { useCallback, useEffect, useState } from "react";
+import { refreshQuoteWidget } from "../widgets/widget-task-handler";
 import { getCurrentDayData } from "./bibleQuoteService";
 
 export interface DailyQuoteData {
@@ -43,6 +44,7 @@ export function useBibleQuoteCache() {
       setCurrentDayData(toQuoteState(row));
       setMissingForToday(!row); // sheet has no row for today's date
       setError(null);
+      refreshQuoteWidget(); // update the home-screen widget too (no-op if none is placed)
     } catch (err) {
       console.log("[biblea] hook load() caught error:", err);
       setError(err as Error);

@@ -119,16 +119,21 @@ async function buildWidget(width = 300, height = 300) {
   } catch (err) {
     console.log("[biblea] widget: loading today's data failed", err);
   }
-  return (
-    <QuoteWidget
-      quote={data?.quote}
-      address={data?.address}
-      imageA={data?.imageA}
-      imageB={data?.imageB}
-      width={width}
-      height={height}
-    />
-  );
+  const shared = {
+    quote: data?.quote,
+    address: data?.address,
+    imageA: data?.imageA,
+    imageB: data?.imageB,
+    width,
+    height,
+  };
+
+  // Android picks the light or dark version itself when the system theme
+  // changes, so no JS has to run at the moment the theme switches.
+  return {
+    light: <QuoteWidget {...shared} theme="light" />,
+    dark: <QuoteWidget {...shared} theme="dark" />,
+  };
 }
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
