@@ -10,11 +10,11 @@
 "use no memo"; // stops React Compiler from injecting hooks into this component
 
 import {
-    FlexWidget,
-    ImageWidget,
-    OverlapWidget,
-    SvgWidget,
-    TextWidget,
+  FlexWidget,
+  ImageWidget,
+  OverlapWidget,
+  SvgWidget,
+  TextWidget,
 } from "react-native-android-widget";
 
 // ---- Switches ---------------------------------------------------------
@@ -27,9 +27,9 @@ import {
 const USE_SVG_BACKDROP = true;
 // ------------------------------------------------------------------------
 
-const RADIUS = 20; // widget corner radius
-const CARD_RADIUS = 15; // same as QuotePage's card
-const CARD_BG = "rgba(255, 255, 255, 0.35)"; // stand-in for the blur (widgets can't blur)
+const RADIUS = 18; // widget corner radius
+const CARD_RADIUS = 12; // same as QuotePage's card
+const CARD_BG = "rgba(255, 255, 255, 0.45)"; // stand-in for the blur (widgets can't blur)
 const TEXT_COLOR = "#000000";
 
 // Same logo QuotePage uses.
