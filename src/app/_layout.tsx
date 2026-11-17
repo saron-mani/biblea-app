@@ -1,45 +1,22 @@
+import AnekMalayalam_400Regular from "@expo-google-fonts/anek-malayalam/400Regular/AnekMalayalam_400Regular.ttf";
+import { useFonts } from "expo-font";
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
-import {
-  AnekMalayalam_400Regular,
-  AnekMalayalam_700Bold,
-  useFonts,
-} from "@expo-google-fonts/anek-malayalam";
-import {
-  Manjari_400Regular,
-  Manjari_700Bold,
-} from "@expo-google-fonts/manjari";
-
-import { AnimatedSplashOverlay } from "@/components/animated-icon";
-
+// Keep the native splash up until the first feed item is renderable.
+// The app hides it in src/app/index.tsx.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
-  const [fontsLoaded, fontError] = useFonts({
-    AnekMalayalam_400Regular,
-    AnekMalayalam_700Bold,
-    Manjari_400Regular,
-    Manjari_700Bold,
-  });
-
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
+  // Only the regular face is used by the UI. The font swaps in when ready;
+  // it no longer blocks the whole app from mounting.
+  useFonts({ AnekMalayalam_400Regular });
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
       </Stack>

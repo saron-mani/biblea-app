@@ -1,0 +1,160 @@
+diff --git a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetProvider.java b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetProvider.java
+index 983ff91..98d16c6 100644
+--- a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetProvider.java
++++ b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetProvider.java
+@@ -18,7 +18,10 @@ public class RNWidgetProvider extends AppWidgetProvider {
+     public void onAppWidgetOptionsChanged(Context context, AppWidgetManager appWidgetManager, int appWidgetId, Bundle newOptions) {
+         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions);
+ 
+-        if (RNWidgetSizing.updateStoredSize(context, appWidgetId)) {
++        // A resize means the launcher has a new frame. Drop any measurement
++        // inferred from an old tap before recomputing from the new options.
++        RNWidgetSizing.clearMeasuredSize(context, appWidgetId);
++        if (RNWidgetSizing.updateStoredSize(context, appWidgetId, newOptions)) {
+             Data data = RNWidgetJsCommunication.buildData(context, getClass().getSimpleName(), appWidgetId, "WIDGET_RESIZED");
+             RNWidgetJsCommunication.startBackgroundTask(context, data);
+         }
+diff --git a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
+index fb19f26..775332c 100644
+--- a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
++++ b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
+@@ -22,17 +22,26 @@ public final class RNWidgetSizing {
+     private RNWidgetSizing() {}
+ 
+     static Point getSize(Context context, int id) {
+-        String profile = profile(context, id);
++        return getSize(context, id, null);
++    }
++
++    // optionsOverride lets onAppWidgetOptionsChanged use the options bundle
++    // delivered with the resize event instead of a possibly stale manager read.
++    static Point getSize(Context context, int id, Bundle optionsOverride) {
++        Bundle options = optionsOverride != null
++            ? optionsOverride
++            : AppWidgetManager.getInstance(context).getAppWidgetOptions(id);
++        String profile = profile(context, id, options);
+         SharedPreferences prefs = preferences(context);
+         if (profile.equals(prefs.getString(id + ":profile", null))) {
+             int width = prefs.getInt(id + ":width", 0);
+             int height = prefs.getInt(id + ":height", 0);
+             if (width > 0 && height > 0) return new Point(width, height);
+         }
+-        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+-        Point size = selectSize(manager.getAppWidgetOptions(id),
++        Point size = selectSize(options,
+             context.getResources().getConfiguration().orientation, Build.VERSION.SDK_INT >= 31);
+         if (size.x <= 0 || size.y <= 0) {
++            AppWidgetManager manager = AppWidgetManager.getInstance(context);
+             AppWidgetProviderInfo info = manager.getAppWidgetInfo(id);
+             if (info != null) {
+                 // Provider dimensions are pixels; launcher options and our layout API use dp.
+@@ -45,8 +54,12 @@ public final class RNWidgetSizing {
+     }
+ 
+     static boolean updateStoredSize(Context context, int widgetId) {
++        return updateStoredSize(context, widgetId, null);
++    }
++
++    static boolean updateStoredSize(Context context, int widgetId, Bundle optionsOverride) {
+         SharedPreferences prefs = storedSizes(context);
+-        Point size = getSize(context, widgetId);
++        Point size = getSize(context, widgetId, optionsOverride);
+         boolean changed = prefs.getInt(widgetId + "-width", 0) != size.x
+             || prefs.getInt(widgetId + "-height", 0) != size.y;
+         prefs.edit()
+@@ -67,27 +80,53 @@ public final class RNWidgetSizing {
+ 
+     static Point selectSize(Bundle options, int orientation, boolean supportsSizes) {
+         boolean landscape = orientation == Configuration.ORIENTATION_LANDSCAPE;
++        Point target = targetSize(options, landscape);
+         if (supportsSizes) {
+             ArrayList<SizeF> sizes = options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES);
+             SizeF selected = null;
++            double bestScore = Double.POSITIVE_INFINITY;
+             if (sizes != null) {
+                 for (SizeF size : sizes) {
+                     if (size == null || !valid(size.getWidth()) || !valid(size.getHeight())) continue;
+-                    if (selected == null || (landscape
+-                        ? size.getWidth() > selected.getWidth()
+-                        : size.getHeight() > selected.getHeight())) selected = size;
++                    double score = distanceFromTarget(size, target);
++                    if (selected == null || score < bestScore
++                        || (score == bestScore && area(size) > area(selected))) {
++                        selected = size;
++                        bestScore = score;
++                    }
+                 }
+             }
+             // Keep the pair together, including launchers that provide only one size.
+             if (selected != null) return new Point(Math.max(1, Math.round(selected.getWidth())),
+                 Math.max(1, Math.round(selected.getHeight())));
+         }
++        return target;
++    }
++
++    // Mirrors the legacy min/max fallback so API 31+ size lists are judged
++    // against the same bounds older Android versions render with.
++    private static Point targetSize(Bundle options, boolean landscape) {
+         return new Point(options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+                 : AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH),
+             options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
+                 : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT));
+     }
+ 
++    // Prefer the advertised pair closest to the launcher's own bounds. Some
++    // launchers (notably ColorOS) report every supported pair, and taking the
++    // largest extreme produces a wide/short bitmap that is then letterboxed
++    // into the real frame.
++    private static double distanceFromTarget(SizeF size, Point target) {
++        if (target.x <= 0 || target.y <= 0) return -area(size);
++        double dw = (size.getWidth() - target.x) / (double) Math.max(target.x, 1);
++        double dh = (size.getHeight() - target.y) / (double) Math.max(target.y, 1);
++        return dw * dw + dh * dh;
++    }
++
++    private static double area(SizeF size) {
++        return (double) size.getWidth() * size.getHeight();
++    }
++
+     private static boolean valid(float value) {
+         return value > 0 && !Float.isInfinite(value) && !Float.isNaN(value);
+     }
+@@ -129,6 +168,12 @@ public final class RNWidgetSizing {
+ 
+     static void clear(Context context, int id) {
+         storedSizes(context).edit().remove(id + "-width").remove(id + "-height").apply();
++        clearMeasuredSize(context, id);
++    }
++
++    // A resize invalidates any tap-calibrated measurement. Keeping it made
++    // ColorOS render the old size into the new launcher frame.
++    static void clearMeasuredSize(Context context, int id) {
+         preferences(context).edit().remove(id + ":profile").remove(id + ":width")
+             .remove(id + ":height").apply();
+     }
+@@ -138,7 +183,10 @@ public final class RNWidgetSizing {
+     }
+ 
+     private static String profile(Context context, int id) {
+-        Bundle options = AppWidgetManager.getInstance(context).getAppWidgetOptions(id);
++        return profile(context, id, AppWidgetManager.getInstance(context).getAppWidgetOptions(id));
++    }
++
++    private static String profile(Context context, int id, Bundle options) {
+         Configuration config = context.getResources().getConfiguration();
+         // Invalidate measurements on size-option, orientation or density changes, but keep
+         // them across ordinary updates and process restarts. Ignore unrelated option keys.
+diff --git a/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java b/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
+index 0f2dab6..245fc1a 100644
+--- a/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
++++ b/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
+@@ -53,7 +53,8 @@ public class RNWidgetSizingTest {
+         Bundle options = options(290, 303);
+         options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
+             new ArrayList<>(Arrays.asList(new SizeF(337.67f, 303), new SizeF(290.67f, 286.67f))));
+-        assertEquals(new Point(338, 303), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, true));
++        // API 31+ picks the advertised pair closest to the min/max bounds instead of the tallest extreme.
++        assertEquals(new Point(290, 287), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, true));
+         assertEquals(new Point(290, 303), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, false));
+     }
+ 

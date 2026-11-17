@@ -12,6 +12,13 @@ import "expo-router/entry";
 // registerRootComponent(App);
 
 import { registerWidgetTaskHandler } from "react-native-android-widget";
-import { widgetTaskHandler } from "./src/widgets/widget-task-handler";
 
-registerWidgetTaskHandler(widgetTaskHandler);
+// The widget renderer (including SVG backgrounds and the quote repository)
+// is only needed when Android actually runs a widget task. Keeping it behind
+// a dynamic import avoids paying that cost on every normal app launch.
+registerWidgetTaskHandler(async (props) => {
+  const { widgetTaskHandler } = await import(
+    "./src/widgets/widget-task-handler"
+  );
+  await widgetTaskHandler(props);
+});

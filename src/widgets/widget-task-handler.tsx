@@ -2,12 +2,9 @@
 //
 // Android calls this (in a headless JS context, app closed) whenever the
 // widget is added, resized, or its updatePeriodMillis timer fires.
-// It reuses getCurrentDayData(), so the widget shares the same Google Sheets
-// cache + daily rollover as the app, and looks the verse text up in
-// quoteBank.json the same way src/app/index.tsx does.
-//
-// The background is generated from the date (see backgrounds.ts), so no
-// images are downloaded or converted for the widget any more.
+// It shares the same Google Sheets cache + daily rollover as the app, looks
+// the verse up through the bundled SQLite repository, and generates the
+// background from the date (see backgrounds.ts) without downloading images.
 
 import { Platform } from "react-native";
 import {
@@ -17,24 +14,30 @@ import {
 
 // NOTE: this file lives in src/widgets, so ".." is src/.
 import { getCurrentDayData, todayKey } from "../components/bibleQuoteService";
+import { getVerse } from "../components/quoteRepository";
 import { malayalamBooks } from "../malayalamBooks";
-import QuoteBank from "../quoteBank.json";
 import { QuoteWidget } from "./QuoteWidget";
 
 /** Must match widgets[].name in the app.json plugin config. */
 export const WIDGET_NAME = "DailyQuote";
 
-async function loadWidgetData() {
-  const { currentDayData } = await getCurrentDayData();
+export interface WidgetQuoteData {
+  book: string;
+  chapter: string;
+  verse: string;
+}
+
+async function loadWidgetData(): Promise<{
+  quote: string;
+  address: string;
+} | null> {
+  // Widget renders don't display the daily images, so skip all image-cache
+  // work (including prefetch) in this headless path.
+  const { currentDayData } = await getCurrentDayData({ includeImages: false });
   if (!currentDayData) return null; // sheet has no row for today
 
   const { book, chapter, verse } = currentDayData;
-
-  // Same lookup as resolveDailyQuote() in src/app/index.tsx
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const quote: string | undefined = (QuoteBank as any)[book]?.[chapter]?.[
-    verse
-  ];
+  const quote = await getVerse(book, chapter, verse);
   if (!quote) return null;
 
   const bookName = malayalamBooks[book] || book;
@@ -43,13 +46,33 @@ async function loadWidgetData() {
   return { quote, address };
 }
 
-async function buildWidget(width = 300, height = 300) {
+async function buildWidget(
+  width = 300,
+  height = 300,
+  prepared?: WidgetQuoteData | null,
+) {
   let data: Awaited<ReturnType<typeof loadWidgetData>> = null;
-  try {
-    data = await loadWidgetData();
-  } catch (err) {
-    console.log("[biblea] widget: loading today's data failed", err);
+
+  if (prepared) {
+    const quote = await getVerse(prepared.book, prepared.chapter, prepared.verse);
+    if (quote) {
+      const bookName = malayalamBooks[prepared.book] || prepared.book;
+      data = {
+        quote,
+        address: `${bookName} ${parseInt(prepared.chapter, 10)}:${parseInt(
+          prepared.verse,
+          10,
+        )}`,
+      };
+    }
+  } else {
+    try {
+      data = await loadWidgetData();
+    } catch (err) {
+      console.log("[biblea] widget: loading today's data failed", err);
+    }
   }
+
   const shared = {
     quote: data?.quote,
     address: data?.address,
@@ -84,16 +107,19 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
 }
 
 /**
- * Call from inside the app (e.g. after the quote hook loads) so the widget
- * updates right away instead of waiting for the next scheduled refresh.
+ * Call from inside the app after the quote changes so the widget updates
+ * right away instead of waiting for the next scheduled refresh. Prepared
+ * data avoids repeating the sheet read on the UI startup path.
  */
-export async function refreshQuoteWidget() {
+export async function refreshQuoteWidget(
+  currentDayData?: WidgetQuoteData | null,
+) {
   if (Platform.OS !== "android") return;
   try {
     await requestWidgetUpdate({
       widgetName: WIDGET_NAME,
       renderWidget: (widgetInfo) =>
-        buildWidget(widgetInfo.width, widgetInfo.height),
+        buildWidget(widgetInfo.width, widgetInfo.height, currentDayData),
       widgetNotFound: () => {
         // widget isn't on the home screen — nothing to do
       },

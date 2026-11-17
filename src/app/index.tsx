@@ -1,17 +1,20 @@
 import QuotePage from "@/components/QuotePage";
 import { Image as ExpoImage } from "expo-image";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import * as SplashScreen from "expo-splash-screen";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   LayoutChangeEvent,
   StyleSheet,
   View,
+  type ViewabilityConfig,
+  type ViewToken,
 } from "react-native";
 
+import { getVerse } from "../components/quoteRepository";
 import { useBibleQuoteCache } from "../components/useBibleQuoteCache";
 import QuoteAddress from "../quoteAddress.json";
-import QuoteBank from "../quoteBank.json";
 
 const malayalamBooks: Record<string, string> = {
   "0": "ഉല്പത്തി",
@@ -103,7 +106,7 @@ type AddressTopicMap = Record<
 
 const typedQuoteAddress = QuoteAddress.topics as AddressTopicMap;
 
-function getRandomQuote(): QuoteData {
+async function getRandomQuote(): Promise<QuoteData> {
   const topics = Object.keys(typedQuoteAddress);
 
   if (topics.length === 0) {
@@ -136,10 +139,9 @@ function getRandomQuote(): QuoteData {
       selectedChapter = randomAddress.chapter;
       selectedVerse = randomAddress.verse;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      quoteText = (QuoteBank as any)[selectedBook]?.[selectedChapter]?.[
-        selectedVerse
-      ];
+      quoteText =
+        (await getVerse(selectedBook, selectedChapter, selectedVerse)) ??
+        undefined;
     }
     attempts++;
   }
@@ -163,12 +165,18 @@ function getRandomQuote(): QuoteData {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function resolveDailyQuote(currentDayData: any): QuoteData | null {
+interface DailyQuoteAddress {
+  book: string;
+  chapter: string;
+  verse: string;
+}
+
+async function resolveDailyQuote(
+  currentDayData: DailyQuoteAddress | null,
+): Promise<QuoteData | null> {
   if (!currentDayData) return null;
   const { book, chapter, verse } = currentDayData;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const text = (QuoteBank as any)[book]?.[chapter]?.[verse];
+  const text = await getVerse(book, chapter, verse);
   if (!text) return null;
   return { topic: "daily", book, chapter, verse, text };
 }
@@ -185,6 +193,11 @@ const FeedItemWrapper = React.memo(
     scrollToNext: () => void;
     localizedBookName: string;
   }) => {
+    const imgUrls = useMemo(
+      () => [item.imageA, item.imageB],
+      [item.imageA, item.imageB],
+    );
+
     return (
       <View style={{ height: containerHeight, backgroundColor: "#000000" }}>
         <View style={{ flex: 1 }}>
@@ -193,7 +206,7 @@ const FeedItemWrapper = React.memo(
             book={localizedBookName}
             chapter={parseInt(item.chapter, 10)}
             verse={parseInt(item.verse, 10)}
-            imgUrls={[item.imageA, item.imageB]}
+            imgUrls={imgUrls}
             refresh={scrollToNext}
           />
         </View>
@@ -201,6 +214,8 @@ const FeedItemWrapper = React.memo(
     );
   },
 );
+
+FeedItemWrapper.displayName = "FeedItemWrapper";
 
 export default function Index() {
   const {
@@ -224,88 +239,118 @@ export default function Index() {
     feedLengthRef.current = feed.length;
   }, [feed]);
 
-  const generateAndCacheItems = async (count: number): Promise<FeedItem[]> => {
-    const newItems: FeedItem[] = [];
-    const urlsToPrefetch: string[] = [];
+  const generateAndCacheItems = useCallback(
+    async (count: number): Promise<FeedItem[]> => {
+      const newItems: FeedItem[] = [];
+      const urlsToPrefetch: string[] = [];
 
-    for (let i = 0; i < count; i++) {
-      const quote = getRandomQuote();
-      const url1 = `https://picsum.photos/720/1280.webp?random=${Math.random()}`;
-      const url2 = `https://picsum.photos/540/960.webp?random=${Math.random()}`;
+      for (let i = 0; i < count; i++) {
+        const quote = await getRandomQuote();
+        const url1 = `https://picsum.photos/720/1280.webp?random=${Math.random()}`;
+        const url2 = `https://picsum.photos/540/960.webp?random=${Math.random()}`;
 
-      newItems.push({
-        ...quote,
-        id: Math.random().toString(36).substring(2, 11),
-        imageA: url1,
-        imageB: url2,
-      });
-      urlsToPrefetch.push(url1, url2);
-    }
+        newItems.push({
+          ...quote,
+          id: Math.random().toString(36).substring(2, 11),
+          imageA: url1,
+          imageB: url2,
+        });
+        urlsToPrefetch.push(url1, url2);
+      }
 
-    try {
-      await Promise.allSettled(
-        urlsToPrefetch.map((url) => ExpoImage.prefetch(url)),
-      );
-    } catch (error) {
-      console.warn("Prefetch error:", error);
-    }
+      // Warm the image cache, but never hold the feed hostage to the network.
+      Promise.allSettled(urlsToPrefetch.map((url) => ExpoImage.prefetch(url)))
+        .catch((error) => console.warn("Prefetch error:", error));
 
-    return newItems;
-  };
+      return newItems;
+    },
+    [],
+  );
 
-  const fetchMoreData = async (count: number) => {
-    if (isFetchingMore.current) return;
-    isFetchingMore.current = true;
+  const fetchMoreData = useCallback(
+    async (count: number) => {
+      if (isFetchingMore.current) return;
+      isFetchingMore.current = true;
 
-    const newItems = await generateAndCacheItems(count);
-    setFeed((prev) => [...prev, ...newItems]);
-
-    isFetchingMore.current = false;
-  };
+      try {
+        const newItems = await generateAndCacheItems(count);
+        setFeed((prev) => [...prev, ...newItems]);
+      } finally {
+        isFetchingMore.current = false;
+      }
+    },
+    [generateAndCacheItems],
+  );
 
   useEffect(() => {
     if (initialized || cacheLoading) return;
 
     const setupInitialFeed = async () => {
-      // Prevent infinite scroll storage leak!
-      await ExpoImage.clearDiskCache();
-      await ExpoImage.clearMemoryCache();
+      try {
+        const dailyQuote = missingForToday
+          ? null
+          : await resolveDailyQuote(currentDayData);
+        const initialItems: FeedItem[] = [];
 
-      const dailyQuote = missingForToday
-        ? null
-        : resolveDailyQuote(currentDayData);
-      const initialItems: FeedItem[] = [];
+        if (dailyQuote && currentDayData) {
+          initialItems.push({
+            ...dailyQuote,
+            id: "daily-quote",
+            imageA: currentDayData.imageA,
+            imageB: currentDayData.imageB,
+          });
+        } else {
+          const [randomFirstItem] = await generateAndCacheItems(1);
+          initialItems.push(randomFirstItem);
+        }
 
-      if (dailyQuote && currentDayData) {
-        initialItems.push({
-          ...dailyQuote,
-          id: "daily-quote",
-          imageA: currentDayData.imageA,
-          imageB: currentDayData.imageB,
-        });
-      } else {
-        const [randomFirstItem] = await generateAndCacheItems(1);
-        initialItems.push(randomFirstItem);
+        const [cachedNextItem] = await generateAndCacheItems(1);
+        initialItems.push(cachedNextItem);
+
+        setFeed(initialItems);
+      } catch (error) {
+        console.warn("Initial feed setup failed:", error);
+        setFeed([
+          {
+            topic: "Error",
+            book: "0",
+            chapter: "0",
+            verse: "0",
+            text: "Unable to load quotes. Please try again.",
+            id: "feed-error",
+            imageA: "",
+            imageB: "",
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
+        setInitialized(true);
+        SplashScreen.hide();
       }
-
-      const [cachedNextItem] = await generateAndCacheItems(1);
-      initialItems.push(cachedNextItem);
-
-      setFeed(initialItems);
-      setIsLoading(false);
-      setInitialized(true);
     };
 
-    setupInitialFeed();
-  }, [cacheLoading, currentDayData, missingForToday, initialized]);
+    void setupInitialFeed();
+  }, [
+    cacheLoading,
+    currentDayData,
+    missingForToday,
+    initialized,
+    generateAndCacheItems,
+  ]);
 
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+  const viewabilityConfig = useMemo<ViewabilityConfig>(
+    () => ({ itemVisiblePercentThreshold: 50 }),
+    [],
+  );
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      currentIndexRef.current = viewableItems[0].index;
-    }
-  }).current;
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length > 0) {
+        currentIndexRef.current = viewableItems[0].index ?? 0;
+      }
+    },
+    [],
+  );
 
   const scrollToNext = useCallback(() => {
     const nextIndex = currentIndexRef.current + 1;
@@ -331,9 +376,23 @@ export default function Index() {
     [containerHeight, scrollToNext],
   );
 
-  const handleLayout = (event: LayoutChangeEvent) => {
-    setContainerHeight(event.nativeEvent.layout.height);
-  };
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = event.nativeEvent.layout.height;
+    setContainerHeight((current) => (current === next ? current : next));
+  }, []);
+
+  const getItemLayout = useCallback(
+    (_: ArrayLike<FeedItem> | null | undefined, index: number) => ({
+      length: containerHeight,
+      offset: containerHeight * index,
+      index,
+    }),
+    [containerHeight],
+  );
+
+  const handleEndReached = useCallback(() => {
+    void fetchMoreData(3);
+  }, [fetchMoreData]);
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
@@ -356,13 +415,9 @@ export default function Index() {
           initialNumToRender={2}
           windowSize={3}
           maxToRenderPerBatch={2}
-          onEndReached={() => fetchMoreData(3)}
+          onEndReached={handleEndReached}
           onEndReachedThreshold={0.5}
-          getItemLayout={(_, index) => ({
-            length: containerHeight,
-            offset: containerHeight * index,
-            index,
-          })}
+          getItemLayout={getItemLayout}
         />
       )}
     </View>

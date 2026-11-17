@@ -114,7 +114,10 @@ function allImageUrlsIn(window) {
   return Object.values(window).flatMap((row) => [row.imageA, row.imageB]);
 }
 
-async function getCurrentDayDataInner({ forceCheck = false } = {}) {
+async function getCurrentDayDataInner({
+  forceCheck = false,
+  includeImages = true,
+} = {}) {
   const cache = await readCache();
   const today = todayKey();
 
@@ -153,8 +156,13 @@ async function getCurrentDayDataInner({ forceCheck = false } = {}) {
   }
 
   const todayRow = window[today] || null;
-  const currentDayData = todayRow
-    ? {
+  let currentDayData = null;
+
+  if (todayRow) {
+    if (includeImages) {
+      // Image downloads are part of the visible feed's payload. Widget-only
+      // callers opt out so a headless update never touches the image cache.
+      currentDayData = {
         ...todayRow,
         imageA: todayRow.imageA
           ? await getCachedImageUri(todayRow.imageA)
@@ -162,14 +170,17 @@ async function getCurrentDayDataInner({ forceCheck = false } = {}) {
         imageB: todayRow.imageB
           ? await getCachedImageUri(todayRow.imageB)
           : null,
-      }
-    : null;
+      };
 
-  const upcomingUrls = Object.entries(window)
-    .filter(([date]) => date !== today)
-    .flatMap(([, row]) => [row.imageA, row.imageB])
-    .filter(Boolean);
-  prefetchImages(upcomingUrls);
+      const upcomingUrls = Object.entries(window)
+        .filter(([date]) => date !== today)
+        .flatMap(([, row]) => [row.imageA, row.imageB])
+        .filter(Boolean);
+      prefetchImages(upcomingUrls);
+    } else {
+      currentDayData = { ...todayRow };
+    }
+  }
 
   return { currentDayData, window, source };
 }

@@ -25,6 +25,7 @@
     "expo-router": "~57.0.18",
     "expo-sharing": "~57.0.17",
     "expo-splash-screen": "~57.0.8",
+    "expo-sqlite": "~57.0.5",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.3",
@@ -48,6 +49,9 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -56,6 +60,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "postinstall": "patch-package",
     "lint": "expo lint"
   },
   "private": true

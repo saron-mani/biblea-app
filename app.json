@@ -34,6 +34,8 @@
               "description": "Today's verse from biblea",
               "minWidth": "180dp",
               "minHeight": "180dp",
+              "maxResizeWidth": "320dp",
+              "maxResizeHeight": "320dp",
               "targetCellWidth": 3,
               "targetCellHeight": 3,
               "resizeMode": "horizontal|vertical",
@@ -54,7 +56,8 @@
       ],
       "expo-font",
       "expo-image",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -31,8 +31,8 @@ type Blob = {
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
 // Called once per quote, so every instance gets a different pattern
-const makeBlobs = (): Blob[] => {
-  const count = 3 + Math.floor(Math.random() * 3); // 3–5 humps
+const makeBlobs = (seed: string): Blob[] => {
+  const count = 3 + (seed.length % 3); // 3–5 humps
   return Array.from({ length: count }, (_, i) => ({
     id: `b${i}_${Math.random().toString(36).slice(2, 7)}`,
     cx: rand(0, 100),
@@ -139,7 +139,11 @@ export default function QuotePage(props: {
   const [isCapturing, setIsCapturing] = useState(false);
 
   // Regenerates whenever this card gets new content (recycled list items included)
-  const blobs = useMemo(makeBlobs, [props.imgUrls[1], props.quote]);
+  const secondaryImageUrl = props.imgUrls[1];
+  const blobs = useMemo(
+    () => makeBlobs(`${secondaryImageUrl}|${props.quote}`),
+    [secondaryImageUrl, props.quote],
+  );
 
   const handleShare = async () => {
     setIsCapturing(true);

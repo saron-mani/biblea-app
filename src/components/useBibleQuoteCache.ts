@@ -1,12 +1,11 @@
 // useBibleQuoteCache.ts
 //
-// Drop this into your quote screen. It resolves TODAY's address+images
-// from the cached 5-day window (fetching/rebuilding it only when needed)
-// and hands it back typed, so consumers don't hit TS's "never" inference
-// that a plain .js file with an untyped useState(null) would cause.
+// Resolves today's address + images from the cached 5-day window. The cache
+// is used immediately on launch; the Google Sheet is rechecked in the
+// background afterwards. The widget is refreshed only when the verse changes.
 
-import { useCallback, useEffect, useState } from "react";
-import { refreshQuoteWidget } from "../widgets/widget-task-handler";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { refreshQuoteWidget } from "../widgets/quoteWidgetRefresh";
 import { getCurrentDayData } from "./bibleQuoteService";
 
 export interface DailyQuoteData {
@@ -17,16 +16,29 @@ export interface DailyQuoteData {
   imageB: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface LoadOptions {
+  forceCheck?: boolean;
+  /** Background refresh: don't toggle the visible loading state. */
+  silent?: boolean;
+}
+
+interface LoadResult {
+  source: string;
+}
+
 function toQuoteState(row: any): DailyQuoteData | null {
   if (!row) return null;
   return {
     book: row.book,
     chapter: row.chapter,
     verse: row.verse,
-    imageA: row.imageA,
-    imageB: row.imageB,
+    imageA: row.imageA ?? "",
+    imageB: row.imageB ?? "",
   };
+}
+
+function verseKey(row: DailyQuoteData | null): string {
+  return row ? `${row.book}|${row.chapter}|${row.verse}` : "none";
 }
 
 export function useBibleQuoteCache() {
@@ -37,38 +49,74 @@ export function useBibleQuoteCache() {
   const [error, setError] = useState<Error | null>(null);
   const [missingForToday, setMissingForToday] = useState<boolean>(false);
 
-  const load = useCallback(async (opts?: { forceCheck?: boolean }) => {
-    try {
-      setLoading(true);
-      const { currentDayData: row } = await getCurrentDayData(opts);
-      setCurrentDayData(toQuoteState(row));
-      setMissingForToday(!row); // sheet has no row for today's date
-      setError(null);
-      refreshQuoteWidget(); // update the home-screen widget too (no-op if none is placed)
-    } catch (err) {
-      console.log("[biblea] hook load() caught error:", err);
-      setError(err as Error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const lastSyncedVerse = useRef<string | null>(null);
+  const backgroundTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback(
+    async (opts: LoadOptions = {}): Promise<LoadResult | undefined> => {
+      const { forceCheck = false, silent = false } = opts;
+      try {
+        if (!silent) setLoading(true);
+
+        const { currentDayData: row, source } = await getCurrentDayData({
+          forceCheck,
+        });
+        const state = toQuoteState(row);
+        const nextVerseKey = verseKey(state);
+
+        setCurrentDayData(state);
+        setMissingForToday(!row);
+        setError(null);
+
+        // Avoid repeating the widget render (and its SVG generation) when a
+        // background sheet check returns the same verse.
+        if (nextVerseKey !== lastSyncedVerse.current) {
+          lastSyncedVerse.current = nextVerseKey;
+          refreshQuoteWidget(state);
+        }
+
+        return { source };
+      } catch (err) {
+        console.log("[biblea] hook load() caught error:", err);
+        setError(err as Error);
+        return undefined;
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    // Re-check the Google Sheet on every app launch, so edits made to today's
-    // row show up right away instead of waiting for tomorrow's cache rollover.
-    // If the fetch fails (offline), getCurrentDayData falls back to the cache.
-    load({ forceCheck: true });
+    let cancelled = false;
+
+    const start = async () => {
+      const result = await load();
+      if (cancelled || result?.source === "network") return;
+
+      // Cache was used for the first paint. Check the sheet once the app is
+      // idle, without showing a spinner or rebuilding the widget unless the
+      // verse actually changed.
+      backgroundTimer.current = setTimeout(() => {
+        void load({ forceCheck: true, silent: true });
+      }, 1500);
+    };
+
+    void start();
+
+    return () => {
+      cancelled = true;
+      if (backgroundTimer.current) clearTimeout(backgroundTimer.current);
+    };
   }, [load]);
 
-  // Optional: call on app foreground / pull-to-refresh to re-check the
-  // sheet for edits before the cache would naturally roll over.
   const forceSync = useCallback(() => load({ forceCheck: true }), [load]);
 
   return {
-    currentDayData, // DailyQuoteData | null
+    currentDayData,
     loading,
     error,
-    missingForToday, // true if today's date has no matching row in the sheet
+    missingForToday,
     forceSync,
   };
 }

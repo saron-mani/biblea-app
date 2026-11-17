@@ -54,21 +54,35 @@ async function getCachedImageUri(remoteUrl) {
 
     const result = await FileSystem.downloadAsync(remoteUrl, localPath);
     return result.uri;
-  } catch (err) {
+  } catch (_err) {
     return remoteUrl;
   }
 }
 
 /**
- * Kicks off downloads for a batch of URLs and returns a Promise you can
- * safely chain .catch() onto. Uses allSettled so it never actually
- * rejects — individual failures are swallowed per-URL — but returning a
- * real Promise (instead of undefined) means calling code that does
- * `prefetchImages(urls).catch(...)` won't crash.
+ * Kicks off downloads for a batch of URLs with a small concurrency limit so
+ * a background refresh cannot saturate the device's network stack. Never
+ * rejects; individual failures are swallowed per-URL.
  */
 function prefetchImages(urls) {
-  const tasks = urls.filter(Boolean).map((url) => getCachedImageUri(url));
-  return Promise.allSettled(tasks);
+  const queue = urls.filter(Boolean);
+  const results = [];
+
+  async function worker() {
+    while (queue.length > 0) {
+      const url = queue.shift();
+      try {
+        results.push(await getCachedImageUri(url));
+      } catch {
+        // Best-effort prefetch: the next render can still fall back to remote.
+      }
+    }
+  }
+
+  const workerCount = Math.min(3, queue.length);
+  return Promise.all(Array.from({ length: workerCount }, worker)).then(
+    () => results,
+  );
 }
 
 /**
@@ -90,7 +104,7 @@ async function pruneUnusedImages(keepUrls) {
         return null;
       }),
     );
-  } catch (err) {
+  } catch (_err) {
     // best-effort cleanup — a failure here shouldn't affect the app
   }
 }
