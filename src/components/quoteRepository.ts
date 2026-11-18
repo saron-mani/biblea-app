@@ -8,3 +8,7 @@ export async function getVerse(
 ): Promise<string | null> {
   throw new Error("No platform implementation for quoteRepository");
 }
+
+export async function didMigrateQuoteBank(): Promise<boolean> {
+  throw new Error("No platform implementation for quoteRepository");
+}

@@ -1,10 +1,6 @@
 import * as AsyncStorageModule from "@react-native-async-storage/async-storage";
 import Papa from "papaparse";
-import {
-  getCachedImageUri,
-  prefetchImages,
-  pruneUnusedImages,
-} from "./imageCacheService";
+import { getCachedImageUri, prefetchImages } from "./imageCacheService";
 
 // Safe AsyncStorage resolution for Hermes
 const AsyncStorage = AsyncStorageModule.default ?? AsyncStorageModule;
@@ -110,10 +106,6 @@ function alreadyFetchedToday(lastFetched) {
   return lastFetched === todayKey();
 }
 
-function allImageUrlsIn(window) {
-  return Object.values(window).flatMap((row) => [row.imageA, row.imageB]);
-}
-
 async function getCurrentDayDataInner({
   forceCheck = false,
   includeImages = true,
@@ -143,7 +135,6 @@ async function getCurrentDayDataInner({
       window = buildWindow(fullMap, today);
       await writeCache(window, today);
       source = "network";
-      pruneUnusedImages(allImageUrlsIn(window));
     } catch (err) {
       console.log("[biblea] sheet fetch/parse failed:", err);
       if (cache.window) {
@@ -160,8 +151,8 @@ async function getCurrentDayDataInner({
 
   if (todayRow) {
     if (includeImages) {
-      // Image downloads are part of the visible feed's payload. Widget-only
-      // callers opt out so a headless update never touches the image cache.
+      // Warm the visible feed's images. Widget-only callers opt out so a
+      // headless update never touches the image cache.
       currentDayData = {
         ...todayRow,
         imageA: todayRow.imageA

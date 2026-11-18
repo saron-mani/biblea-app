@@ -1,113 +1,63 @@
 // imageCacheService.js
 //
-// Downloads a remote image URL to disk once, then reuses the local copy
-// on every future call. Pair this with bibleQuoteService.js so the two
-// image URLs for a given day are actual files on the device, not just
-// strings pointing at the network.
+// Thin wrapper around expo-image's managed disk cache.
 //
-// DEPENDENCIES:
-//   npx expo install expo-file-system
+// A previous version downloaded every image with expo-file-system into a
+// custom cache directory. That created three failure modes:
+//   1. concurrent downloads wrote to the same file path,
+//   2. cache pruning could delete a file while a mounted card still used it,
+//   3. a partially written file could be returned as a valid local URI.
+//
+// expo-image already keeps a 250 MB LRU disk cache on Android and reads from
+// it with the default `cachePolicy="disk"`. We only need to warm that cache
+// once per URL and let the library own eviction and integrity.
 
-import * as FileSystem from "expo-file-system/legacy";
+import { Image } from "expo-image";
 
-const CACHE_DIR = `${FileSystem.cacheDirectory}biblea-images/`;
+const inFlight = new Map();
 
-async function ensureDirExists() {
-  const info = await FileSystem.getInfoAsync(CACHE_DIR);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
-  }
-}
-
-// Cheap djb2 hash — just needs to turn a URL into a safe, stable filename.
-function hashUrl(url) {
-  let hash = 5381;
-  for (let i = 0; i < url.length; i++) {
-    hash = (hash * 33) ^ url.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(16);
-}
-
-function extensionFromUrl(url) {
-  const match = url.split("?")[0].match(/\.(jpg|jpeg|png|webp|gif)$/i);
-  return match ? match[0] : ".jpg";
-}
-
-function localPathForUrl(url) {
-  return `${CACHE_DIR}${hashUrl(url)}${extensionFromUrl(url)}`;
+function normalizeUrl(url) {
+  return typeof url === "string" && url.length > 0 ? url : null;
 }
 
 /**
- * Returns a local file:// URI for a remote image URL, downloading it
- * first if it isn't already on disk. Falls back to the remote URL itself
- * if the download fails (e.g. offline), so the UI still has something to
- * render instead of a broken image.
+ * Warms the expo-image disk cache for one URL and always resolves with the
+ * original URI. On failure we still return the URI so the image view can try
+ * its own load; a transient prefetch failure must not blank the feed.
  */
-async function getCachedImageUri(remoteUrl) {
-  if (!remoteUrl) return null;
+export function prefetchImage(url) {
+  const uri = normalizeUrl(url);
+  if (!uri) return Promise.resolve(null);
 
-  try {
-    await ensureDirExists();
-    const localPath = localPathForUrl(remoteUrl);
-    const info = await FileSystem.getInfoAsync(localPath);
-    if (info.exists) return localPath;
+  const existing = inFlight.get(uri);
+  if (existing) return existing;
 
-    const result = await FileSystem.downloadAsync(remoteUrl, localPath);
-    return result.uri;
-  } catch (_err) {
-    return remoteUrl;
-  }
+  const task = Promise.resolve()
+    .then(() => Image.prefetch(uri, "disk"))
+    .catch(() => false)
+    .then(() => uri)
+    .finally(() => {
+      inFlight.delete(uri);
+    });
+
+  inFlight.set(uri, task);
+  return task;
+}
+
+/** Kept for the existing bibleQuoteService call site. */
+export async function getCachedImageUri(remoteUrl) {
+  return prefetchImage(remoteUrl);
 }
 
 /**
- * Kicks off downloads for a batch of URLs with a small concurrency limit so
- * a background refresh cannot saturate the device's network stack. Never
- * rejects; individual failures are swallowed per-URL.
+ * Prefetches a batch of URLs once each. Deduping here stops a background
+ * refresh and a visible render from fighting over the same network request.
  */
-function prefetchImages(urls) {
-  const queue = urls.filter(Boolean);
-  const results = [];
-
-  async function worker() {
-    while (queue.length > 0) {
-      const url = queue.shift();
-      try {
-        results.push(await getCachedImageUri(url));
-      } catch {
-        // Best-effort prefetch: the next render can still fall back to remote.
-      }
-    }
-  }
-
-  const workerCount = Math.min(3, queue.length);
-  return Promise.all(Array.from({ length: workerCount }, worker)).then(
-    () => results,
+export function prefetchImages(urls = []) {
+  const uniqueUrls = Array.from(
+    new Set(urls.map(normalizeUrl).filter(Boolean)),
   );
+
+  if (uniqueUrls.length === 0) return Promise.resolve([]);
+  return Promise.all(uniqueUrls.map(prefetchImage));
 }
-
-/**
- * Deletes any cached image file that isn't in the given "keep" list.
- * Call this after building a fresh 5-day window so images for days that
- * have rolled out of the window don't pile up on disk forever.
- */
-async function pruneUnusedImages(keepUrls) {
-  try {
-    await ensureDirExists();
-    const keepPaths = new Set(keepUrls.filter(Boolean).map(localPathForUrl));
-    const files = await FileSystem.readDirectoryAsync(CACHE_DIR);
-    await Promise.all(
-      files.map((file) => {
-        const fullPath = `${CACHE_DIR}${file}`;
-        if (!keepPaths.has(fullPath)) {
-          return FileSystem.deleteAsync(fullPath, { idempotent: true });
-        }
-        return null;
-      }),
-    );
-  } catch (_err) {
-    // best-effort cleanup — a failure here shouldn't affect the app
-  }
-}
-
-export { getCachedImageUri, prefetchImages, pruneUnusedImages };
-

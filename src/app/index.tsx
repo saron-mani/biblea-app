@@ -1,17 +1,21 @@
 import QuotePage from "@/components/QuotePage";
-import { Image as ExpoImage } from "expo-image";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   FlatList,
   LayoutChangeEvent,
   StyleSheet,
   View,
-  type ViewabilityConfig,
-  type ViewToken,
 } from "react-native";
 
+import { prefetchImages } from "../components/imageCacheService";
 import { getVerse } from "../components/quoteRepository";
 import { useBibleQuoteCache } from "../components/useBibleQuoteCache";
 import QuoteAddress from "../quoteAddress.json";
@@ -83,6 +87,13 @@ const malayalamBooks: Record<string, string> = {
   "63": "3 യോഹന്നാൻ",
   "64": "യൂദാ",
   "65": "വെളിപാട്",
+  "66": "തോബിത്",
+  "67": "യൂദിത്ത്",
+  "68": "ജ്ഞാനം",
+  "69": "പ്രഭാഷകന്‍",
+  "70": "ബാറൂക്ക്",
+  "71": "1 മക്കബായര്‍",
+  "72": "2 മക്കബായര്‍",
 };
 
 interface QuoteData {
@@ -185,12 +196,10 @@ const FeedItemWrapper = React.memo(
   ({
     item,
     containerHeight,
-    scrollToNext,
     localizedBookName,
   }: {
     item: FeedItem;
     containerHeight: number;
-    scrollToNext: () => void;
     localizedBookName: string;
   }) => {
     const imgUrls = useMemo(
@@ -207,7 +216,6 @@ const FeedItemWrapper = React.memo(
             chapter={parseInt(item.chapter, 10)}
             verse={parseInt(item.verse, 10)}
             imgUrls={imgUrls}
-            refresh={scrollToNext}
           />
         </View>
       </View>
@@ -229,15 +237,7 @@ export default function Index() {
   const [initialized, setInitialized] = useState<boolean>(false);
   const [containerHeight, setContainerHeight] = useState<number>(0);
 
-  const flatListRef = useRef<FlatList>(null);
-
   const isFetchingMore = useRef<boolean>(false);
-  const currentIndexRef = useRef<number>(0);
-  const feedLengthRef = useRef<number>(0);
-
-  useEffect(() => {
-    feedLengthRef.current = feed.length;
-  }, [feed]);
 
   const generateAndCacheItems = useCallback(
     async (count: number): Promise<FeedItem[]> => {
@@ -246,12 +246,15 @@ export default function Index() {
 
       for (let i = 0; i < count; i++) {
         const quote = await getRandomQuote();
-        const url1 = `https://picsum.photos/720/1280.webp?random=${Math.random()}`;
-        const url2 = `https://picsum.photos/540/960.webp?random=${Math.random()}`;
+        const id = Math.random().toString(36).substring(2, 11);
+        // Stable seed URLs are reusable from the disk cache on later launches.
+        // A `?random=` query made every load a brand-new cache entry.
+        const url1 = `https://picsum.photos/seed/biblea-${id}-a/720/1280.webp`;
+        const url2 = `https://picsum.photos/seed/biblea-${id}-b/540/960.webp`;
 
         newItems.push({
           ...quote,
-          id: Math.random().toString(36).substring(2, 11),
+          id,
           imageA: url1,
           imageB: url2,
         });
@@ -259,8 +262,7 @@ export default function Index() {
       }
 
       // Warm the image cache, but never hold the feed hostage to the network.
-      Promise.allSettled(urlsToPrefetch.map((url) => ExpoImage.prefetch(url)))
-        .catch((error) => console.warn("Prefetch error:", error));
+      void prefetchImages(urlsToPrefetch);
 
       return newItems;
     },
@@ -338,27 +340,6 @@ export default function Index() {
     generateAndCacheItems,
   ]);
 
-  const viewabilityConfig = useMemo<ViewabilityConfig>(
-    () => ({ itemVisiblePercentThreshold: 50 }),
-    [],
-  );
-
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (viewableItems.length > 0) {
-        currentIndexRef.current = viewableItems[0].index ?? 0;
-      }
-    },
-    [],
-  );
-
-  const scrollToNext = useCallback(() => {
-    const nextIndex = currentIndexRef.current + 1;
-    if (flatListRef.current && nextIndex < feedLengthRef.current) {
-      flatListRef.current.scrollToIndex({ index: nextIndex, animated: true });
-    }
-  }, []);
-
   const keyExtractor = useCallback((item: FeedItem) => item.id, []);
 
   const renderItem = useCallback(
@@ -368,12 +349,11 @@ export default function Index() {
         <FeedItemWrapper
           item={item}
           containerHeight={containerHeight}
-          scrollToNext={scrollToNext}
           localizedBookName={localizedBookName}
         />
       );
     },
-    [containerHeight, scrollToNext],
+    [containerHeight],
   );
 
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
@@ -402,7 +382,6 @@ export default function Index() {
         </View>
       ) : (
         <FlatList
-          ref={flatListRef}
           data={feed}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
@@ -410,13 +389,11 @@ export default function Index() {
           showsVerticalScrollIndicator={false}
           decelerationRate="fast"
           snapToAlignment="start"
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
           initialNumToRender={2}
-          windowSize={3}
-          maxToRenderPerBatch={2}
+          windowSize={2}
+          maxToRenderPerBatch={1}
           onEndReached={handleEndReached}
-          onEndReachedThreshold={0.5}
+          onEndReachedThreshold={1}
           getItemLayout={getItemLayout}
         />
       )}

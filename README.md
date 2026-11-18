@@ -13,8 +13,10 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 2. Start the app
 
    ```bash
-   npx expo start
+   npm start
    ```
+
+   Use `npm start -- --clear` when you also want to clear Metro's cache. Starting through npm rebuilds the bundled quote database first; `npx expo start` skips that step.
 
 In the output, you'll find options to open the app in a
 
@@ -24,6 +26,15 @@ In the output, you'll find options to open the app in a
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+
+## Quote data
+
+`src/quoteBank.json` is the source of truth for verse text. Native builds read a generated SQLite file (`assets/data/quoteBank.db`), not the JSON directly, because parsing the 13 MB JSON into JavaScript is too slow on a device.
+
+- After editing `src/quoteBank.json`, run `npm run build:quote-db`. `npm start` does this automatically.
+- The build also writes `src/quoteBank.meta.ts` and stores the source hash inside the DB. On launch, native compares them and re-imports the bundled DB if the on-device copy is stale, so no reinstall is needed.
+- `npm run check:quote-db` verifies the committed DB and meta file match the JSON — useful in CI and before EAS builds.
+- Web reads `src/quoteBank.json` directly and needs no rebuild.
 
 ## Get a fresh project
 

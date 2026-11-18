@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { refreshQuoteWidget } from "../widgets/quoteWidgetRefresh";
 import { getCurrentDayData } from "./bibleQuoteService";
+import { didMigrateQuoteBank } from "./quoteRepository";
 
 export interface DailyQuoteData {
   book: string;
@@ -20,6 +21,8 @@ interface LoadOptions {
   forceCheck?: boolean;
   /** Background refresh: don't toggle the visible loading state. */
   silent?: boolean;
+  /** The silent sheet check only needs the verse, not image prefetching. */
+  includeImages?: boolean;
 }
 
 interface LoadResult {
@@ -50,16 +53,22 @@ export function useBibleQuoteCache() {
   const [missingForToday, setMissingForToday] = useState<boolean>(false);
 
   const lastSyncedVerse = useRef<string | null>(null);
+  const migrationRefreshed = useRef<boolean>(false);
   const backgroundTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
     async (opts: LoadOptions = {}): Promise<LoadResult | undefined> => {
-      const { forceCheck = false, silent = false } = opts;
+      const {
+        forceCheck = false,
+        silent = false,
+        includeImages = true,
+      } = opts;
       try {
         if (!silent) setLoading(true);
 
         const { currentDayData: row, source } = await getCurrentDayData({
           forceCheck,
+          includeImages,
         });
         const state = toQuoteState(row);
         const nextVerseKey = verseKey(state);
@@ -69,9 +78,15 @@ export function useBibleQuoteCache() {
         setError(null);
 
         // Avoid repeating the widget render (and its SVG generation) when a
-        // background sheet check returns the same verse.
-        if (nextVerseKey !== lastSyncedVerse.current) {
+        // background sheet check returns the same verse. A database migration
+        // changes the quote text without changing the address, so it needs
+        // one refresh of its own.
+        const verseChanged = nextVerseKey !== lastSyncedVerse.current;
+        const migrated = await didMigrateQuoteBank();
+
+        if (verseChanged || (migrated && !migrationRefreshed.current)) {
           lastSyncedVerse.current = nextVerseKey;
+          if (migrated) migrationRefreshed.current = true;
           refreshQuoteWidget(state);
         }
 
@@ -98,7 +113,7 @@ export function useBibleQuoteCache() {
       // idle, without showing a spinner or rebuilding the widget unless the
       // verse actually changed.
       backgroundTimer.current = setTimeout(() => {
-        void load({ forceCheck: true, silent: true });
+        void load({ forceCheck: true, silent: true, includeImages: false });
       }, 1500);
     };
 

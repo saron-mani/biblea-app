@@ -158,3 +158,33 @@ index 0f2dab6..245fc1a 100644
          assertEquals(new Point(290, 303), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, false));
      }
  
+diff --git a/node_modules/react-native-android-widget/app.plugin.js b/node_modules/react-native-android-widget/app.plugin.js
+index 4899b02..386ce4b 100644
+--- a/node_modules/react-native-android-widget/app.plugin.js
++++ b/node_modules/react-native-android-widget/app.plugin.js
+@@ -194,7 +194,11 @@ function withWidgetProviderXml(config, projectPaths, widget) {
+     var _a, _b, _c;
+     var xmlFolderPath = path.join(projectPaths.platformProjectRoot, 'android/app/src/main/res/xml');
+     var xmlPath = path.join(xmlFolderPath, "/widgetprovider_".concat(widget.name.toLowerCase(), ".xml"));
+-    var data = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<appwidget-provider xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    android:minWidth=\"".concat(widget.minWidth, "\"\n    android:minHeight=\"").concat(widget.minHeight, "\"\n").concat(widget.targetCellWidth
++    var data = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<appwidget-provider xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    android:minWidth=\"".concat(widget.minWidth, "\"\n    android:minHeight=\"").concat(widget.minHeight, "\"\n").concat(widget.minResizeWidth
++        ? "    android:minResizeWidth=\"".concat(widget.minResizeWidth, "\"")
++        : '', "\n").concat(widget.minResizeHeight
++        ? "    android:minResizeHeight=\"".concat(widget.minResizeHeight, "\"")
++        : '', "\n").concat(widget.targetCellWidth
+         ? "    android:targetCellWidth=\"".concat(widget.targetCellWidth, "\"")
+         : '', "\n").concat(widget.targetCellHeight
+         ? "    android:targetCellHeight=\"".concat(widget.targetCellHeight, "\"")
+diff --git a/node_modules/react-native-android-widget/src/config-plugin.type.ts b/node_modules/react-native-android-widget/src/config-plugin.type.ts
+index 3e729bc..46f6d86 100644
+--- a/node_modules/react-native-android-widget/src/config-plugin.type.ts
++++ b/node_modules/react-native-android-widget/src/config-plugin.type.ts
+@@ -15,6 +15,8 @@ export interface Widget {
+   description?: string;
+   minWidth: `${number}dp`;
+   minHeight: `${number}dp`;
++  minResizeWidth?: `${number}dp`;
++  minResizeHeight?: `${number}dp`;
+   targetCellWidth?: number;
+   targetCellHeight?: number;
+   maxResizeWidth?: `${number}dp`;

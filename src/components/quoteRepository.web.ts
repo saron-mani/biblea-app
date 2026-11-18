@@ -22,3 +22,8 @@ export async function getVerse(
   const bank = await getBank();
   return bank[String(book)]?.[String(chapter)]?.[String(verse)] ?? null;
 }
+
+/** Web reads the JSON directly, so there is no on-device database to replace. */
+export async function didMigrateQuoteBank(): Promise<boolean> {
+  return false;
+}
