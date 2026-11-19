@@ -16,7 +16,14 @@ import {
   SvgWidget,
   TextWidget,
 } from "react-native-android-widget";
+import { LOADING_COLORS, LOADING_COPY } from "../components/loadingTheme";
 import { buildBackgroundSvg } from "./backgrounds";
+import { buildLoadingBackgroundSvg } from "./loadingBackground";
+import {
+  computeWidgetLayout,
+  MIN_WIDGET_HEIGHT_DP,
+  MIN_WIDGET_WIDTH_DP,
+} from "./widgetLayout";
 
 const RADIUS = 14; // widget corner radius
 const CARD_RADIUS = 11; // card corner radius
@@ -30,15 +37,19 @@ const LOGO_SVG_DARK = require("../../assets/images/name-img-white.svg");
 const THEMES = {
   light: {
     cardBg: "rgba(255, 255, 255, 0.45)", // translucent white
+    loadingCardBg: "rgba(255, 255, 255, 0.74)",
     text: "#000000",
+    loadingMuted: LOADING_COLORS.muted,
     logo: LOGO_SVG_LIGHT,
-    fallbackBg: "#E9E6F2",
+    fallbackBg: LOADING_COLORS.lavender,
   },
   dark: {
     cardBg: "rgba(22, 22, 22, 0.55)", // dark charcoal, translucent
+    loadingCardBg: LOADING_COLORS.darkCard,
     text: "#E3E3E3", // soft off-white instead of pure white
+    loadingMuted: "#B9B2C4",
     logo: LOGO_SVG_DARK,
-    fallbackBg: "#1C1B1F",
+    fallbackBg: LOADING_COLORS.darkBase,
   },
 } as const;
 
@@ -55,32 +66,6 @@ interface QuoteWidgetProps {
   theme?: Theme;
 }
 
-const clamp = (n: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, n));
-
-/** Sizes everything from the widget's dimensions so it adapts to any cell grid. */
-function computeLayout(w: number, h: number, textLength: number) {
-  const pad = Math.round(clamp(Math.min(w, h) * 0.07, 8, 24));
-  const cardW = Math.round(w * 0.88);
-  const innerW = cardW - pad * 2;
-  const logoH = Math.round(clamp(h * 0.16, 22, 44));
-  const logoW = Math.round(logoH * 1.5); // logo is shown in a 3:2 box in the app
-  const addrFs = Math.round(clamp(h * 0.055, 9, 15));
-  const gap = Math.round(clamp(h * 0.03, 4, 12));
-
-  // Space left for the verse text inside a card that may use ~90% of the height.
-  const textH = h * 0.9 - pad * 2 - logoH - addrFs * 1.5 - gap * 2;
-
-  // Rough fit: each Malayalam char needs about 0.9 * fontSize^2 of area.
-  const fitFs = Math.sqrt(
-    (innerW * Math.max(textH, 20)) / (Math.max(textLength, 1) * 0.9),
-  );
-  const fontSize = Math.round(clamp(fitFs, 9, 18));
-  const maxLines = Math.max(2, Math.floor(textH / (fontSize * 1.5)));
-
-  return { pad, cardW, logoH, logoW, addrFs, gap, fontSize, maxLines };
-}
-
 export function QuoteWidget({
   quote,
   address,
@@ -89,34 +74,77 @@ export function QuoteWidget({
   height,
   theme = "light",
 }: QuoteWidgetProps) {
-  const w = Math.max(1, Math.round(width));
-  const h = Math.max(1, Math.round(height));
+  // Defensive floor: a bad measured size must not shrink the internal card.
+  const w = Math.max(MIN_WIDGET_WIDTH_DP, Math.round(Number(width) || 0));
+  const h = Math.max(MIN_WIDGET_HEIGHT_DP, Math.round(Number(height) || 0));
   const t = THEMES[theme];
 
   // No verse yet (offline on first install, or no row for today in the sheet).
   if (!quote || !address) {
+    const L = computeWidgetLayout(w, h, 40);
     return (
-      <FlexWidget
+      <OverlapWidget
         clickAction="OPEN_APP"
         style={{
           height: "match_parent",
           width: "match_parent",
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: t.fallbackBg,
           borderRadius: RADIUS,
-          padding: 16,
+          overflow: "hidden",
+          backgroundColor: t.fallbackBg,
         }}
       >
-        <TextWidget
-          text="Open Biblea to load today's verse"
-          style={{ fontSize: 15, color: t.text }}
+        <SvgWidget
+          svg={buildLoadingBackgroundSvg(w, h, theme)}
+          style={{ width: w, height: h }}
         />
-      </FlexWidget>
+
+        <FlexWidget
+          style={{
+            height: "match_parent",
+            width: "match_parent",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 12,
+          }}
+        >
+          <FlexWidget
+            style={{
+              width: L.cardW,
+              padding: L.pad,
+              borderRadius: CARD_RADIUS,
+              backgroundColor: t.loadingCardBg,
+            }}
+          >
+            <SvgWidget svg={t.logo} style={{ width: L.logoW, height: L.logoH }} />
+
+            <TextWidget
+              text={LOADING_COPY.title}
+              maxLines={1}
+              allowFontScaling={false}
+              style={{ fontSize: L.addrFs + 1, color: t.text, marginTop: L.gap }}
+            />
+            <TextWidget
+              text={LOADING_COPY.subtitle}
+              maxLines={1}
+              allowFontScaling={false}
+              style={{ fontSize: L.addrFs, color: t.loadingMuted, marginTop: 3 }}
+            />
+            <TextWidget
+              text="✦"
+              allowFontScaling={false}
+              style={{
+                fontSize: L.addrFs + 2,
+                color: LOADING_COLORS.gold,
+                marginTop: L.gap,
+              }}
+            />
+          </FlexWidget>
+        </FlexWidget>
+      </OverlapWidget>
     );
   }
 
-  const L = computeLayout(w, h, quote.length);
+  const L = computeWidgetLayout(w, h, quote.length);
 
   return (
     <OverlapWidget

@@ -6,6 +6,7 @@ import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,6 +15,8 @@ import {
 import { captureRef } from "react-native-view-shot";
 
 import QuoteBackground, { createSoftBlobs } from "./QuoteBackground";
+
+const BIBLEA_URL = "https://biblea.web.app/";
 
 export interface QuotePageProps {
   quote: string;
@@ -30,6 +33,7 @@ function QuoteCardSurface({
   exportMode = false,
   isCapturing = false,
   onShare,
+  onOpenWebsite,
 }: {
   quote: string;
   reference: string;
@@ -37,6 +41,7 @@ function QuoteCardSurface({
   exportMode?: boolean;
   isCapturing?: boolean;
   onShare?: () => void;
+  onOpenWebsite?: () => void;
 }) {
   return (
     <View style={styles.cardContainer} pointerEvents="box-none">
@@ -50,35 +55,52 @@ function QuoteCardSurface({
           exportMode ? styles.exportCard : styles.visibleCard,
         ]}
       >
-        <Image
-          source={require("../../assets/images/name-img.svg")}
-          style={styles.logo}
-          contentFit="contain"
-        />
-
+        <View style={styles.divider} />
         <Text style={styles.quote}>{quote}</Text>
-        <Text style={[styles.reference, !exportMode && styles.referenceWithShare]}>
+        <Text
+          style={[styles.reference, !exportMode && styles.referenceWithShare]}
+        >
           {reference}
         </Text>
 
         {!exportMode ? (
           <>
-            <TouchableOpacity
-              onPress={onShare}
-              disabled={isCapturing || !onShare}
-              style={styles.shareButton}
-            >
-              {isCapturing ? (
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
-              ) : (
-                <Feather
-                  name="share-2"
-                  size={20}
-                  color="rgba(255, 255, 255, 0.6)"
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                onPress={onOpenWebsite}
+                disabled={!onOpenWebsite}
+                style={styles.circleButton}
+                accessibilityRole="link"
+                accessibilityLabel="Open Biblea website"
+              >
+                <Image
+                  source={require("../../assets/images/biblea-adaptive-icon.png")}
+                  style={styles.brandIcon}
+                  contentFit="cover"
                 />
-              )}
-            </TouchableOpacity>
-            <View style={styles.divider} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onShare}
+                disabled={isCapturing || !onShare}
+                style={styles.circleButton}
+                accessibilityRole="button"
+                accessibilityLabel="Share quote"
+              >
+                {isCapturing ? (
+                  <ActivityIndicator
+                    size="small"
+                    color="rgba(255,255,255,0.6)"
+                  />
+                ) : (
+                  <Feather
+                    name="share-2"
+                    size={20}
+                    color="rgba(255, 255, 255, 0.6)"
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
           </>
         ) : null}
       </BlurView>
@@ -108,6 +130,14 @@ export default function QuotePage(props: QuotePageProps) {
       mountedRef.current = false;
       if (shareTimer.current) clearTimeout(shareTimer.current);
     };
+  }, []);
+
+  const handleOpenWebsite = useCallback(async () => {
+    try {
+      await Linking.openURL(BIBLEA_URL);
+    } catch (error) {
+      console.error("Failed to open website", error);
+    }
   }, []);
 
   const handleShare = useCallback(async () => {
@@ -188,6 +218,7 @@ export default function QuotePage(props: QuotePageProps) {
           targetRef={targetRef}
           isCapturing={isCapturing}
           onShare={handleShare}
+          onOpenWebsite={handleOpenWebsite}
         />
       </View>
     </View>
@@ -232,11 +263,6 @@ const styles = StyleSheet.create({
     width: 306,
     backgroundColor: "rgba(255, 255, 255, 0.05)",
   },
-  logo: {
-    width: 150,
-    height: 100,
-    marginBottom: 16,
-  },
   quote: {
     fontSize: 18,
     fontFamily: "AnekMalayalam_400Regular",
@@ -253,7 +279,14 @@ const styles = StyleSheet.create({
   referenceWithShare: {
     marginBottom: 16,
   },
-  shareButton: {
+  actionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 12,
+    marginTop: 10,
+  },
+  circleButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -261,15 +294,18 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginTop: 10,
+    overflow: "hidden",
+  },
+  brandIcon: {
+    width: "60%",
+    height: "60%",
   },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "#ffffff35",
-    width: "75%",
-    marginTop: 24,
-    marginBottom: 2,
+    width: "100%",
+    marginTop: 2,
+    marginBottom: 24,
     alignSelf: "flex-start",
   },
 });

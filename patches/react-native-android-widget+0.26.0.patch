@@ -15,10 +15,19 @@ index 983ff91..98d16c6 100644
              RNWidgetJsCommunication.startBackgroundTask(context, data);
          }
 diff --git a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
-index fb19f26..775332c 100644
+index fb19f26..659747f 100644
 --- a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
 +++ b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/RNWidgetSizing.java
-@@ -22,17 +22,26 @@ public final class RNWidgetSizing {
+@@ -18,35 +18,52 @@ public final class RNWidgetSizing {
+     private static final String PADDING = "rnwidget.size.padding";
+     private static final String PROFILE = "rnwidget.size.profile";
+     private static final String RENDERED_SIZE = "rnwidget.size.rendered";
++    // Some launchers report only the tapped child as sourceBounds. Those
++    // measurements can be a fraction of the real widget and must never become
++    // the size we render at.
++    private static final float MIN_MEASURED_RATIO = 0.6f;
++    private static final float MAX_MEASURED_RATIO = 2.0f;
+ 
      private RNWidgetSizing() {}
  
      static Point getSize(Context context, int id) {
@@ -37,18 +46,32 @@ index fb19f26..775332c 100644
          if (profile.equals(prefs.getString(id + ":profile", null))) {
              int width = prefs.getInt(id + ":width", 0);
              int height = prefs.getInt(id + ":height", 0);
-             if (width > 0 && height > 0) return new Point(width, height);
+-            if (width > 0 && height > 0) return new Point(width, height);
++            Point measured = new Point(width, height);
++            if (plausibleSize(context, id, measured, options)) return measured;
++            // A bad value from an old launch must not keep poisoning renders.
++            clearMeasuredSize(context, id);
          }
 -        AppWidgetManager manager = AppWidgetManager.getInstance(context);
 -        Point size = selectSize(manager.getAppWidgetOptions(id),
 +        Point size = selectSize(options,
              context.getResources().getConfiguration().orientation, Build.VERSION.SDK_INT >= 31);
-         if (size.x <= 0 || size.y <= 0) {
-+            AppWidgetManager manager = AppWidgetManager.getInstance(context);
-             AppWidgetProviderInfo info = manager.getAppWidgetInfo(id);
-             if (info != null) {
-                 // Provider dimensions are pixels; launcher options and our layout API use dp.
-@@ -45,8 +54,12 @@ public final class RNWidgetSizing {
+-        if (size.x <= 0 || size.y <= 0) {
+-            AppWidgetProviderInfo info = manager.getAppWidgetInfo(id);
+-            if (info != null) {
+-                // Provider dimensions are pixels; launcher options and our layout API use dp.
+-                float density = context.getResources().getDisplayMetrics().density;
+-                if (size.x <= 0) size.x = Math.max(1, Math.round(info.minWidth / density));
+-                if (size.y <= 0) size.y = Math.max(1, Math.round(info.minHeight / density));
+-            }
+-        }
++        Point minimum = minimumSize(context, id);
++        if (size.x <= 0) size.x = minimum.x;
++        if (size.y <= 0) size.y = minimum.y;
++        // Even a buggy launcher size list cannot make the internal layout tiny.
++        size.x = Math.max(size.x, minimum.x);
++        size.y = Math.max(size.y, minimum.y);
+         return size;
      }
  
      static boolean updateStoredSize(Context context, int widgetId) {
@@ -62,11 +85,16 @@ index fb19f26..775332c 100644
          boolean changed = prefs.getInt(widgetId + "-width", 0) != size.x
              || prefs.getInt(widgetId + "-height", 0) != size.y;
          prefs.edit()
-@@ -67,27 +80,53 @@ public final class RNWidgetSizing {
+@@ -66,26 +83,53 @@ public final class RNWidgetSizing {
+     }
  
      static Point selectSize(Bundle options, int orientation, boolean supportsSizes) {
-         boolean landscape = orientation == Configuration.ORIENTATION_LANDSCAPE;
-+        Point target = targetSize(options, landscape);
+-        boolean landscape = orientation == Configuration.ORIENTATION_LANDSCAPE;
++        // Home-screen widgets are rendered into a portrait RemoteViews frame.
++        // Always resolve portrait dimensions so a background/headless update that
++        // runs while the device is in landscape cannot collapse the native bitmap
++        // to OPTION_APPWIDGET_MIN_HEIGHT.
++        Point target = targetSize(options);
          if (supportsSizes) {
              ArrayList<SizeF> sizes = options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES);
              SizeF selected = null;
@@ -89,18 +117,20 @@ index fb19f26..775332c 100644
              if (selected != null) return new Point(Math.max(1, Math.round(selected.getWidth())),
                  Math.max(1, Math.round(selected.getHeight())));
          }
+-        return new Point(options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+-                : AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH),
+-            options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
+-                : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT));
 +        return target;
 +    }
 +
-+    // Mirrors the legacy min/max fallback so API 31+ size lists are judged
-+    // against the same bounds older Android versions render with.
-+    private static Point targetSize(Bundle options, boolean landscape) {
-         return new Point(options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
-                 : AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH),
-             options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
-                 : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT));
-     }
- 
++    // Portrait widget bounds from the launcher. Using MAX_HEIGHT (not landscape
++    // MIN_HEIGHT) keeps the rendered bitmap tall even if the device rotates.
++    private static Point targetSize(Bundle options) {
++        return new Point(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH),
++            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT));
++    }
++
 +    // Prefer the advertised pair closest to the launcher's own bounds. Some
 +    // launchers (notably ColorOS) report every supported pair, and taking the
 +    // largest extreme produces a wide/short bitmap that is then letterboxed
@@ -114,12 +144,20 @@ index fb19f26..775332c 100644
 +
 +    private static double area(SizeF size) {
 +        return (double) size.getWidth() * size.getHeight();
-+    }
-+
-     private static boolean valid(float value) {
-         return value > 0 && !Float.isInfinite(value) && !Float.isNaN(value);
      }
-@@ -129,6 +168,12 @@ public final class RNWidgetSizing {
+ 
+     private static boolean valid(float value) {
+@@ -112,6 +156,9 @@ public final class RNWidgetSizing {
+         float density = context.getResources().getDisplayMetrics().density;
+         Point size = new Point(Math.max(1, Math.round(pixels.x / density)),
+             Math.max(1, Math.round(pixels.y / density)));
++        // Child-view taps on some launchers only cover a sliver of the widget.
++        // Ignore those instead of letting them shrink every later render.
++        if (!plausibleSize(context, id, size, null)) return false;
+         Point previous = getSize(context, id);
+         preferences(context).edit().putString(id + ":profile", profile(context, id))
+             .putInt(id + ":width", size.x).putInt(id + ":height", size.y).apply();
+@@ -129,16 +176,50 @@ public final class RNWidgetSizing {
  
      static void clear(Context context, int id) {
          storedSizes(context).edit().remove(id + "-width").remove(id + "-height").apply();
@@ -132,7 +170,34 @@ index fb19f26..775332c 100644
          preferences(context).edit().remove(id + ":profile").remove(id + ":width")
              .remove(id + ":height").apply();
      }
-@@ -138,7 +183,10 @@ public final class RNWidgetSizing {
+ 
++    private static Point minimumSize(Context context, int id) {
++        AppWidgetProviderInfo info = AppWidgetManager.getInstance(context).getAppWidgetInfo(id);
++        if (info == null) return new Point(1, 1);
++        float density = context.getResources().getDisplayMetrics().density;
++        // Provider dimensions are pixels; launcher options and our layout API use dp.
++        return new Point(Math.max(1, Math.round(info.minWidth / density)),
++            Math.max(1, Math.round(info.minHeight / density)));
++    }
++
++    private static boolean plausibleSize(Context context, int id, Point size, Bundle optionsOverride) {
++        if (size == null || size.x <= 0 || size.y <= 0) return false;
++        if (optionsOverride == null) {
++            optionsOverride = AppWidgetManager.getInstance(context).getAppWidgetOptions(id);
++        }
++        Point minimum = minimumSize(context, id);
++        if (size.x < minimum.x || size.y < minimum.y) return false;
++        Point expected = selectSize(optionsOverride,
++            context.getResources().getConfiguration().orientation, Build.VERSION.SDK_INT >= 31);
++        if (expected.x <= 0 || expected.y <= 0) return true;
++        return size.x >= expected.x * MIN_MEASURED_RATIO
++            && size.x <= expected.x * MAX_MEASURED_RATIO
++            && size.y >= expected.y * MIN_MEASURED_RATIO
++            && size.y <= expected.y * MAX_MEASURED_RATIO;
++    }
++
+     private static SharedPreferences preferences(Context context) {
+         return context.getSharedPreferences("rnwidget.measured_sizes", Context.MODE_PRIVATE);
      }
  
      private static String profile(Context context, int id) {
@@ -145,10 +210,10 @@ index fb19f26..775332c 100644
          // Invalidate measurements on size-option, orientation or density changes, but keep
          // them across ordinary updates and process restarts. Ignore unrelated option keys.
 diff --git a/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java b/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
-index 0f2dab6..245fc1a 100644
+index 0f2dab6..561a500 100644
 --- a/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
 +++ b/node_modules/react-native-android-widget/android/src/test/java/com/reactnativeandroidwidget/RNWidgetSizingTest.java
-@@ -53,7 +53,8 @@ public class RNWidgetSizingTest {
+@@ -53,22 +53,25 @@ public class RNWidgetSizingTest {
          Bundle options = options(290, 303);
          options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
              new ArrayList<>(Arrays.asList(new SizeF(337.67f, 303), new SizeF(290.67f, 286.67f))));
@@ -158,11 +223,109 @@ index 0f2dab6..245fc1a 100644
          assertEquals(new Point(290, 303), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, false));
      }
  
+-    @Test public void selectsOrientationAndAcceptsSingleValidEntry() {
++    @Test public void alwaysResolvesPortraitWidgetSizeRegardlessOfDeviceOrientation() {
+         Bundle options = options(100, 200);
+         options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
+             new ArrayList<>(Arrays.asList(new SizeF(300, 100), new SizeF(100, 300))));
+-        assertEquals(new Point(300, 100), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_LANDSCAPE, true));
++        // A portrait home-screen widget must keep its portrait pair even if the
++        // device/background task is currently in landscape orientation.
++        assertEquals(new Point(100, 300), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_LANDSCAPE, true));
+         assertEquals(new Point(100, 300), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, true));
+         options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
+             new ArrayList<>(Arrays.asList(new SizeF(222, 111))));
+-        assertEquals(new Point(222, 111), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, true));
++        assertEquals(new Point(222, 111), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_LANDSCAPE, true));
+         options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
+             new ArrayList<>(Arrays.asList(new SizeF(0, 0), null)));
+-        assertEquals(new Point(100, 200), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_PORTRAIT, true));
++        assertEquals(new Point(100, 200), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_LANDSCAPE, true));
+     }
+ 
+     @Test public void zeroOptionsUseProviderMinimumsConvertedToDp() {
+@@ -102,6 +105,17 @@ public class RNWidgetSizingTest {
+         assertEquals(new Point(365, 318), RNWidgetSizing.getSize(context, id));
+     }
+ 
++    @Test public void implausiblySmallTapNeverShrinksTheWidget() {
++        AppWidgetProviderInfo info = new AppWidgetProviderInfo();
++        info.minWidth = 200;
++        info.minHeight = 150;
++        shadowOf(manager).putWidgetInfo(id, info);
++        manager.updateAppWidgetOptions(id, options(365, 354));
++        Intent tinyTap = tap(new Rect(), 40, 12);
++        assertFalse(RNWidgetSizing.correct(context, id, tinyTap));
++        assertEquals(new Point(365, 354), RNWidgetSizing.getSize(context, id));
++    }
++
+     private Intent tap(Rect padding, int width, int height) {
+         Intent intent = new Intent();
+         RNWidgetSizing.attach(context, id, intent, padding);
+@@ -153,18 +167,39 @@ public class RNWidgetSizingTest {
+         assertEquals(new Point(400, 400), RNWidgetSizing.getSize(context, id));
+     }
+ 
+-    @Test public void rotationAndDensityChangesRejectOldTap() {
++    @Test public void rotationAndDensityChangesRejectOldTapButKeepPortraitSize() {
+         Intent oldTap = tap(new Rect(), 365, 318);
+         RNWidgetSizing.correct(context, id, oldTap);
+         RuntimeEnvironment.setQualifiers("land-mdpi");
+         assertFalse(RNWidgetSizing.correct(context, id, oldTap));
+-        assertEquals(new Point(465, 254), RNWidgetSizing.getSize(context, id));
++        // Device rotation must not switch the home-screen widget bitmap to the
++        // landscape min/max fallback.
++        assertEquals(new Point(365, 354), RNWidgetSizing.getSize(context, id));
+         RuntimeEnvironment.setQualifiers("port-xhdpi");
+         assertFalse(RNWidgetSizing.correct(context, id, oldTap));
+         assertTrue(RNWidgetSizing.correct(context, id, tap(new Rect(), 730, 636)));
+         assertEquals(new Point(365, 318), RNWidgetSizing.getSize(context, id));
+     }
+ 
++    @Test public void landscapeBackgroundUpdateDoesNotCollapseWidgetHeight() {
++        AppWidgetProviderInfo info = new AppWidgetProviderInfo();
++        info.minWidth = 250;
++        info.minHeight = 180;
++        shadowOf(manager).putWidgetInfo(id, info);
++        Bundle options = options(250, 180);
++        options.putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,
++            new ArrayList<>(Arrays.asList(new SizeF(250, 180), new SizeF(320, 70))));
++        manager.updateAppWidgetOptions(id, options);
++        RuntimeEnvironment.setQualifiers("land-mdpi");
++
++        assertEquals(new Point(250, 180), RNWidgetSizing.selectSize(options, Configuration.ORIENTATION_LANDSCAPE, true));
++        assertEquals(new Point(250, 180), RNWidgetSizing.getSize(context, id));
++
++        // A WIDGET_UPDATE while landscape must not poison the stored render size.
++        assertTrue(RNWidgetSizing.updateStoredSize(context, id));
++        assertEquals(new Point(250, 180), RNWidgetSizing.getSize(context, id));
++    }
++
+     @Test public void storedSizeDeduplicatesLauncherCallbacks() {
+         assertTrue(RNWidgetSizing.isWidgetNew(context, id));
+         assertTrue(RNWidgetSizing.updateStoredSize(context, id));
 diff --git a/node_modules/react-native-android-widget/app.plugin.js b/node_modules/react-native-android-widget/app.plugin.js
-index 4899b02..386ce4b 100644
+index 4899b02..23b5c87 100644
 --- a/node_modules/react-native-android-widget/app.plugin.js
 +++ b/node_modules/react-native-android-widget/app.plugin.js
-@@ -194,7 +194,11 @@ function withWidgetProviderXml(config, projectPaths, widget) {
+@@ -178,10 +178,16 @@ function withWidget(config, projectPaths, widget) {
+             withWidgetProviderClass(dangerousConfig, projectPaths, widget);
+             withWidgetProviderXml(dangerousConfig, projectPaths, widget);
+             withWidgetPreview(projectPaths, widget);
++            withWidgetInitialLayout(projectPaths, widget);
+             return dangerousConfig;
+         },
+     ]);
+ }
++function getInitialLayoutResource(widget) {
++    if (!widget.initialLayout) return '@layout/rn_widget';
++    var fileName = path.basename(widget.initialLayout, path.extname(widget.initialLayout));
++    return "@layout/".concat(fileName);
++}
+ function withWidgetProviderClass(config, projectPaths, widget) {
+     var receiverPackage = getReceiverInfo(config, widget).receiverPackage;
+     var widgetPackagePath = path.join(projectPaths.platformProjectRoot, 'android/app/src/main/java/' + receiverPackage.split('.').join('/'));
+@@ -194,7 +200,11 @@ function withWidgetProviderXml(config, projectPaths, widget) {
      var _a, _b, _c;
      var xmlFolderPath = path.join(projectPaths.platformProjectRoot, 'android/app/src/main/res/xml');
      var xmlPath = path.join(xmlFolderPath, "/widgetprovider_".concat(widget.name.toLowerCase(), ".xml"));
@@ -175,11 +338,47 @@ index 4899b02..386ce4b 100644
          ? "    android:targetCellWidth=\"".concat(widget.targetCellWidth, "\"")
          : '', "\n").concat(widget.targetCellHeight
          ? "    android:targetCellHeight=\"".concat(widget.targetCellHeight, "\"")
+@@ -204,7 +214,7 @@ function withWidgetProviderXml(config, projectPaths, widget) {
+         ? "    android:maxResizeHeight=\"".concat(widget.maxResizeHeight, "\"")
+         : '', "\n\n    android:resizeMode=\"").concat((_a = widget.resizeMode) !== null && _a !== void 0 ? _a : 'none', "\"\n\n").concat(widget.description
+         ? "    android:description=\"@string/widget_".concat(widget.name.toLowerCase(), "_description\"")
+-        : '', "\n\n    android:initialLayout=\"@layout/rn_widget\"\n").concat(widget.previewImage
++        : '', "\n\n    android:initialLayout=\"").concat(getInitialLayoutResource(widget), "\"\n").concat(widget.previewImage
+         ? "    android:previewImage=\"@drawable/".concat(widget.name.toLowerCase(), "_preview\"")
+         : '', "\n\n").concat(widget.widgetFeatures
+         ? "    android:configure=\"".concat((_b = config.android) === null || _b === void 0 ? void 0 : _b.package, ".WidgetConfigurationActivity\"\n    android:widgetFeatures=\"").concat(widget.widgetFeatures, "\"")
+@@ -223,6 +233,26 @@ function withWidgetPreview(projectPaths, widget) {
+         fs.copyFileSync(previewAssetPath, output);
+     }
+ }
++function withWidgetInitialLayout(projectPaths, widget) {
++    if (!widget.initialLayout) return;
++    var layoutDir = path.join(projectPaths.platformProjectRoot, 'android/app/src/main/res/layout');
++    fs.mkdirSync(layoutDir, { recursive: true });
++    var assetPath = path.resolve(projectPaths.projectRoot, widget.initialLayout);
++    var output = path.join(layoutDir, path.basename(assetPath));
++    fs.copyFileSync(assetPath, output);
++    // A custom initial layout can ship its own drawables next to it.
++    var drawableSourceDir = path.join(path.dirname(assetPath), 'drawable');
++    if (fs.existsSync(drawableSourceDir)) {
++        var drawableOutputDir = path.join(projectPaths.platformProjectRoot, 'android/app/src/main/res/drawable');
++        fs.mkdirSync(drawableOutputDir, { recursive: true });
++        fs.readdirSync(drawableSourceDir).forEach(function (file) {
++            var source = path.join(drawableSourceDir, file);
++            if (fs.statSync(source).isFile()) {
++                fs.copyFileSync(source, path.join(drawableOutputDir, file));
++            }
++        });
++    }
++}
+ function getReceiverInfo(config, widget) {
+     var _a, _b;
+     if (!((_a = config.android) === null || _a === void 0 ? void 0 : _a.package)) {
 diff --git a/node_modules/react-native-android-widget/src/config-plugin.type.ts b/node_modules/react-native-android-widget/src/config-plugin.type.ts
-index 3e729bc..46f6d86 100644
+index 3e729bc..e8f5fc1 100644
 --- a/node_modules/react-native-android-widget/src/config-plugin.type.ts
 +++ b/node_modules/react-native-android-widget/src/config-plugin.type.ts
-@@ -15,6 +15,8 @@ export interface Widget {
+@@ -15,11 +15,18 @@ export interface Widget {
    description?: string;
    minWidth: `${number}dp`;
    minHeight: `${number}dp`;
@@ -188,3 +387,13 @@ index 3e729bc..46f6d86 100644
    targetCellWidth?: number;
    targetCellHeight?: number;
    maxResizeWidth?: `${number}dp`;
+   maxResizeHeight?: `${number}dp`;
+   previewImage?: ResourcePath;
++  /**
++   * Android layout XML used as the provider's initial layout, shown before the
++   * first React Native render is available.
++   */
++  initialLayout?: ResourcePath;
+   resizeMode?: 'none' | 'horizontal' | 'vertical' | 'horizontal|vertical';
+   /**
+    * Whether the widget can be configured.

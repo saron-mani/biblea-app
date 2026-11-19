@@ -1,9 +1,11 @@
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 
 import { prefetchImage } from "./imageCacheService";
+import { LOADING_COLORS } from "./loadingTheme";
 
 export type SoftBlob = {
   id: string;
@@ -183,6 +185,13 @@ const QuoteBackground = memo(function QuoteBackground({
 }: QuoteBackgroundProps) {
   return (
     <View style={styles.container} pointerEvents="none">
+      {/* An instant branded backdrop while the cached photos fade in. */}
+      <LinearGradient
+        colors={[LOADING_COLORS.lavender, LOADING_COLORS.cream]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <BackgroundImage
         uri={primaryUri}
         transition={transition}
@@ -205,7 +214,7 @@ const QuoteBackground = memo(function QuoteBackground({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "#151515",
+    backgroundColor: LOADING_COLORS.lavender,
   },
   secondaryLayer: {
     ...StyleSheet.absoluteFill,

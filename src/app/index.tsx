@@ -1,3 +1,4 @@
+import LoadingState from "@/components/LoadingState";
 import QuotePage from "@/components/QuotePage";
 import * as SplashScreen from "expo-splash-screen";
 import React, {
@@ -8,14 +9,16 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   LayoutChangeEvent,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 
 import { prefetchImages } from "../components/imageCacheService";
+import { LOADING_COLORS } from "../components/loadingTheme";
+import { PLACEHOLDER_VERSE } from "../components/placeholderVerse";
 import { getVerse } from "../components/quoteRepository";
 import { useBibleQuoteCache } from "../components/useBibleQuoteCache";
 import QuoteAddress from "../quoteAddress.json";
@@ -108,6 +111,21 @@ interface FeedItem extends QuoteData {
   id: string;
   imageA: string;
   imageB: string;
+}
+
+const PLACEHOLDER_FEED_ID = "genesis-1-1-placeholder";
+
+function createPlaceholderFeedItem(): FeedItem {
+  return {
+    topic: "daily",
+    book: PLACEHOLDER_VERSE.book,
+    chapter: PLACEHOLDER_VERSE.chapter,
+    verse: PLACEHOLDER_VERSE.verse,
+    text: PLACEHOLDER_VERSE.text,
+    id: PLACEHOLDER_FEED_ID,
+    imageA: "",
+    imageB: "",
+  };
 }
 
 type AddressTopicMap = Record<
@@ -232,12 +250,22 @@ export default function Index() {
     missingForToday,
   } = useBibleQuoteCache();
 
-  const [feed, setFeed] = useState<FeedItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { height: windowHeight } = useWindowDimensions();
+
+  // The first frame is already readable: no spinner and no network wait.
+  const [feed, setFeed] = useState<FeedItem[]>(() => [
+    createPlaceholderFeedItem(),
+  ]);
   const [initialized, setInitialized] = useState<boolean>(false);
-  const [containerHeight, setContainerHeight] = useState<number>(0);
+  const [containerHeight, setContainerHeight] = useState<number>(windowHeight);
 
   const isFetchingMore = useRef<boolean>(false);
+
+  // The placeholder can render immediately, so the native splash no longer
+  // has to wait for SQLite, the sheet cache or image prefetching.
+  useEffect(() => {
+    void SplashScreen.hideAsync();
+  }, []);
 
   const generateAndCacheItems = useCallback(
     async (count: number): Promise<FeedItem[]> => {
@@ -287,32 +315,41 @@ export default function Index() {
   useEffect(() => {
     if (initialized || cacheLoading) return;
 
+    let cancelled = false;
+
     const setupInitialFeed = async () => {
       try {
         const dailyQuote = missingForToday
           ? null
           : await resolveDailyQuote(currentDayData);
-        const initialItems: FeedItem[] = [];
 
+        let firstItem: FeedItem;
         if (dailyQuote && currentDayData) {
-          initialItems.push({
+          firstItem = {
             ...dailyQuote,
             id: "daily-quote",
             imageA: currentDayData.imageA,
             imageB: currentDayData.imageB,
-          });
+          };
         } else {
-          const [randomFirstItem] = await generateAndCacheItems(1);
-          initialItems.push(randomFirstItem);
+          [firstItem] = await generateAndCacheItems(1);
         }
 
-        const [cachedNextItem] = await generateAndCacheItems(1);
-        initialItems.push(cachedNextItem);
+        if (cancelled) return;
 
-        setFeed(initialItems);
+        // Keep anything the user already reached so swiping early never
+        // resets the feed when the real verse arrives.
+        setFeed((previous) => [
+          firstItem,
+          ...previous.filter((item) => item.id !== PLACEHOLDER_FEED_ID),
+        ]);
+
+        // The next card is a nicety, not part of the first-paint path.
+        void fetchMoreData(1);
       } catch (error) {
         console.warn("Initial feed setup failed:", error);
-        setFeed([
+        if (cancelled) return;
+        setFeed((previous) => [
           {
             topic: "Error",
             book: "0",
@@ -323,21 +360,25 @@ export default function Index() {
             imageA: "",
             imageB: "",
           },
+          ...previous.filter((item) => item.id !== PLACEHOLDER_FEED_ID),
         ]);
       } finally {
-        setIsLoading(false);
-        setInitialized(true);
-        SplashScreen.hide();
+        if (!cancelled) setInitialized(true);
       }
     };
 
     void setupInitialFeed();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     cacheLoading,
     currentDayData,
     missingForToday,
     initialized,
     generateAndCacheItems,
+    fetchMoreData,
   ]);
 
   const keyExtractor = useCallback((item: FeedItem) => item.id, []);
@@ -376,10 +417,8 @@ export default function Index() {
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
-      {isLoading || feed.length === 0 || containerHeight === 0 ? (
-        <View style={[styles.loadingContainer, StyleSheet.absoluteFill]}>
-          <ActivityIndicator size="large" color="#ffffff" />
-        </View>
+      {feed.length === 0 || containerHeight <= 0 ? (
+        <LoadingState style={StyleSheet.absoluteFill} />
       ) : (
         <FlatList
           data={feed}
@@ -404,13 +443,6 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000000",
-    zIndex: 10,
+    backgroundColor: LOADING_COLORS.lavender,
   },
 });

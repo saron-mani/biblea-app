@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/biblea_loading_bg"
+    android:padding="14dp">
+
+    <View
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="2dp"
+        android:layout_marginTop="4dp"
+        android:alpha="0.65"
+        android:background="@drawable/biblea_loading_orb_lilac" />
+
+    <View
+        android:layout_width="70dp"
+        android:layout_height="70dp"
+        android:layout_gravity="end|bottom"
+        android:layout_marginBottom="2dp"
+        android:layout_marginEnd="2dp"
+        android:alpha="0.7"
+        android:background="@drawable/biblea_loading_orb_peach" />
+
+    <View
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="end|top"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/biblea_loading_orb_gold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/biblea_loading_card"
+        android:elevation="3dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="biblea"
+            android:src="@mipmap/ic_launcher" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="9dp"
+            android:maxLines="1"
+            android:text="Opening today's verse…"
+            android:textColor="#17181C"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:text="Just a moment ✨"
+            android:textColor="#7A7484"
+            android:textSize="11sp" />
+
+        <ProgressBar
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginTop="10dp"
+            android:indeterminate="true"
+            android:indeterminateDrawable="@drawable/biblea_loading_spinner" />
+
+    </LinearLayout>
+
+</FrameLayout>

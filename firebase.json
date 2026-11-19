@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "dist",
+    "public": "preview-site",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -8,9 +8,23 @@
     ],
     "rewrites": [
       {
+        "source": "/preview/convert",
+        "destination": "/convert.html"
+      },
+      {
+        "source": "/preview",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/convert",
+        "destination": "/convert.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
-    ]
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false
   }
 }

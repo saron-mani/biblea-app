@@ -1,0 +1,67 @@
+name: Deploy biblea preview to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/app/preview/**"
+      - "src/app/_layout.tsx"
+      - "src/components/QuotePage.tsx"
+      - "src/components/QuoteBackground.tsx"
+      - "src/components/WidgetPreview.tsx"
+      - "src/components/loadingTheme.ts"
+      - "src/components/placeholderVerse.ts"
+      - "src/components/quoteRepository.*"
+      - "src/widgets/backgrounds.ts"
+      - "src/widgets/widgetLayout.ts"
+      - "src/utils/bibleAddress.ts"
+      - "src/malayalamBooks.ts"
+      - "src/quoteBank.json"
+      - "assets/images/name-img*.svg"
+      - "app.json"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/build-preview-site.mjs"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-hosting-preview.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: bibleapreview-hosting
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy preview site
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build standalone preview site
+        run: npm run build:preview
+
+      - name: Deploy to Firebase live channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_BIBLEAPREVIEW }}"
+          projectId: bibleapreview
+          channelId: live

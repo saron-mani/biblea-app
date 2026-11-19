@@ -36,6 +36,23 @@ You can start developing by editing the files inside the **app** directory. This
 - `npm run check:quote-db` verifies the committed DB and meta file match the JSON — useful in CI and before EAS builds.
 - Web reads `src/quoteBank.json` directly and needs no rebuild.
 
+## Preview website
+
+The standalone preview site is deployed to <https://bibleapreview.web.app/>.
+
+- `npm run build:preview` exports the Expo web app and writes the deployable site to `preview-site/`.
+- `npm run deploy:preview` builds it and deploys to Firebase Hosting (requires Firebase CLI access).
+- `.github/workflows/firebase-hosting-preview.yml` builds and deploys to the live channel when preview-related files change on `main`.
+
+One-time GitHub setup:
+
+1. Create or select the Firebase project with ID `bibleapreview` and enable Hosting.
+2. Generate a service account key with the **Firebase Hosting Admin** role.
+3. Add the full JSON key as a GitHub Actions repository secret named `FIREBASE_SERVICE_ACCOUNT_BIBLEAPREVIEW`.
+4. Push a change under `src/app/preview/` (or one of the shared paths listed in the workflow) to `main`.
+
+`firebase init hosting:github --project bibleapreview` can also create the service account and secret automatically.
+
 ## Get a fresh project
 
 When you're ready, run:
